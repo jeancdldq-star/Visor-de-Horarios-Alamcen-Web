@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Organizador Diario de Turnos</title>
     
-    <!-- AQUÍ CAMBIAS EL EMOJI DE LA PESTAÑA DEL NAVEGADOR (Cambia el 📋 por el que quieras) -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
     
-    <!-- Cargamos SheetJS para leer el Excel en el navegador -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
@@ -98,10 +96,10 @@
             print-color-adjust: exact;
         }
         
-        /* CAMBIO DEFINITIVO: Cuadrícula exacta (Grid) para alinear sin separar demasiado */
+        /* CUADRÍCULA (Grid) para alinear sin separar demasiado */
         .fila-turno {
             display: grid;
-            grid-template-columns: 240px 80px 100px; /* Anchos fijos y juntos en la izquierda */
+            grid-template-columns: 200px 80px 100px; /* Anchos fijos y juntos en la izquierda */
             align-items: start;
             gap: 10px;
             padding: 4px 2px;
@@ -160,8 +158,7 @@
     </div>
 
     <div id="contenedor-horarios">
-        <!-- Aquí se dibujarán los datos con JS -->
-    </div>
+        </div>
 </div>
 
 <script>
@@ -464,28 +461,28 @@
             let listaDatos = turnos[hora];
             let cantidad = listaDatos.length;
             
-            html_content += \`<div class="bloque">\`;
-            html_content += \`<div class="hora-titulo">\${hora} H (\${cantidad} pers.)</div>\`;
+            html_content += `<div class="bloque">`;
+            html_content += `<div class="hora-titulo">${hora} H (${cantidad} pers.)</div>`;
             
             listaDatos.forEach(datos => {
-                let sig_texto = datos.sig !== "FIN TURNO" ? \`➔ Sig: \${datos.sig}\` : "";
+                let sig_texto = datos.sig !== "FIN TURNO" ? `➔ Sig: ${datos.sig}` : "";
                 
-                html_content += \`
+                html_content += `
                     <div class="fila-turno">
-                        <div class="col-nombre">- \${datos.nombre}</div>
-                        <div class="col-fin">Fin: \${datos.fin}</div>
-                        <div class="col-sig">\${sig_texto}</div>
+                        <div class="col-nombre">- ${datos.nombre}</div>
+                        <div class="col-fin">Fin: ${datos.fin}</div>
+                        <div class="col-sig">${sig_texto}</div>
                     </div>
-                \`;
+                `;
             });
-            html_content += \`</div>\`;
+            html_content += `</div>`;
         });
 
         html_content += `
             </div>
             <script>
                 window.nativePrint = function() { window.print(); }
-            <\/script>
+            </script>
         </body>
         </html>
         `;
