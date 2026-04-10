@@ -15,7 +15,9 @@
             padding: 20px;
         }
         .app-container {
-            max-width: 1200px;
+            /* CAMBIO: Ahora ocupa el 96% de la pantalla hasta un máximo de 1800px */
+            width: 96%;
+            max-width: 1800px;
             margin: 0 auto;
             background: white;
             padding: 20px 30px;
@@ -71,8 +73,9 @@
         /* --- VISTA DE HORARIOS (TIPO TKINTER / COMIC SANS) --- */
         #contenedor-horarios {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 20px;
+            /* CAMBIO: Bloques más anchos (mínimo 420px) para que los nombres no se solapen */
+            grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+            gap: 25px;
             font-family: 'Comic Sans MS', cursive, sans-serif;
         }
         .bloque-hora {
@@ -104,9 +107,10 @@
             padding: 4px 2px;
             vertical-align: top;
         }
-        .col-nombre { width: 50%; }
-        .col-fin { width: 25%; font-weight: bold; }
-        .col-sig { width: 25%; font-weight: bold; }
+        /* Ajuste de columnas para dar más espacio al nombre */
+        .col-nombre { width: 55%; }
+        .col-fin { width: 22%; font-weight: bold; }
+        .col-sig { width: 23%; font-weight: bold; }
 
         /* --- ESTILOS PARA IMPRESIÓN --- */
         @media print {
