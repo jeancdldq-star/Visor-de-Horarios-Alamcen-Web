@@ -74,7 +74,7 @@
         #contenedor-horarios {
             display: grid;
             /* CAMBIO: Bloques más anchos (mínimo 420px) para que los nombres no se solapen */
-            grid-template-columns: repeat(auto-fill, minmax(800px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
             gap: 25px;
             font-family: 'Comic Sans MS', cursive, sans-serif;
         }
@@ -108,9 +108,9 @@
             vertical-align: top;
         }
         /* Ajuste de columnas para dar más espacio al nombre */
-        .col-nombre { width: 55%; }
-        .col-fin { width: 22%; font-weight: bold; }
-        .col-sig { width: 23%; font-weight: bold; }
+        .col-nombre { width: 35%; }
+        .col-fin { width: 15%; font-weight: bold; }
+        .col-sig { width: 20%; font-weight: bold; }
 
         /* --- ESTILOS PARA IMPRESIÓN --- */
         @media print {
@@ -126,7 +126,7 @@
 
 <div class="app-container">
     <div class="no-print">
-        <h1>Organizador Diario de Turnos</h1>
+        <h1>Visor Diario de Turnos</h1>
         <div class="instrucciones">Selecciona la sección y sube el Excel de hoy para generar la vista</div>
 
         <div class="controles">
