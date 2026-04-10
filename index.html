@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visor Diario de Turnos MD</title>
-    <!-- Cargamos SheetJS para leer el Excel en el navegador -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
@@ -21,7 +20,7 @@
             margin: 0 auto;
             background: white;
             padding: 20px 30px;
-            border-radius: 12px;
+            border-radius: 14px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             min-height: 85vh;
         }
@@ -102,12 +101,13 @@
         }
         td {
             color: #000080;
-            font-size: 14px;
+            font-size: 12x;
             font-style: italic;
             padding: 4px 2px;
             vertical-align: top;
         }
-        /* Ajuste de columnas para dar más espacio al nombre */
+        
+        /* Ajuste de columnas para dar más espacio al nombre y evitar saltos */
         .col-nombre { width: 35%; }
         .col-fin { width: 15%; font-weight: bold; }
         .col-sig { width: 20%; font-weight: bold; }
@@ -150,8 +150,7 @@
     </div>
 
     <div id="contenedor-horarios">
-        <!-- Aquí se dibujarán los datos con JS -->
-    </div>
+        </div>
 </div>
 
 <script>
@@ -241,7 +240,18 @@
                 let df = rows.map(r => {
                     let horaInicio = formatTime(r['hora inicio']);
                     let horaFin = formatTime(r['hora fin']);
-                    let nombre = String(r['nombre empleado']).trim().toUpperCase();
+                    
+                    // --- AQUÍ ESTÁ LA MODIFICACIÓN DE LOS NOMBRES ---
+                    let nombreBruto = String(r['nombre empleado']).trim().toUpperCase();
+                    let partesNombre = nombreBruto.split(/\s+/); // Separa el nombre por espacios
+
+                    // Si tiene 3 o más palabras, eliminamos la última
+                    if (partesNombre.length >= 3) {
+                        partesNombre.pop(); 
+                    }
+                    let nombre = partesNombre.join(' '); // Vuelve a unir el nombre
+                    // ------------------------------------------------
+
                     let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
                     
                     if (tareaRaw === 'NAN' || tareaRaw === 'NAT' || tareaRaw === 'NULL' || tareaRaw === 'NONE') {
