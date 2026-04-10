@@ -1,376 +1,426 @@
-import pandas as pd
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import webbrowser
-import tempfile
-import os
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organizador Diario de Turnos</title>
+    <!-- Cargamos SheetJS para leer el Excel en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .app-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            min-height: 85vh;
+        }
+        h1 { text-align: center; color: #333; margin-bottom: 5px; }
+        .instrucciones { text-align: center; color: #666; font-size: 16px; margin-bottom: 25px; }
 
-class AplicacionHorarios:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Organizador Diario de Turnos")
-        self.root.geometry("1000x900")
-        self.root.configure(bg="white") # Fondo blanco simulando papel
-
-        # --- CAMBIO DE ICONO DE LA VENTANA ---
-        try:
-            self.root.iconbitmap("lista.ico") 
-        except:
-            pass 
-        # --------------------------------------------
-
-        # --- CONTENEDOR PRINCIPAL Y BARRAS DE SCROLL ---
-        self.main_frame = tk.Frame(root, bg="white")
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.canvas_scroll = tk.Canvas(self.main_frame, bg="white", highlightthickness=0)
-        self.v_scrollbar = ttk.Scrollbar(self.main_frame, orient="vertical", command=self.canvas_scroll.yview)
-        self.h_scrollbar = ttk.Scrollbar(self.main_frame, orient="horizontal", command=self.canvas_scroll.xview)
+        /* --- CONTROLES --- */
+        .controles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        select {
+            padding: 10px;
+            font-size: 14px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            outline: none;
+            width: 220px;
+        }
+        .btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn:disabled { background: #aaa !important; cursor: not-allowed; }
+        .btn-cargar { background-color: #4CAF50; }
+        .btn-imprimir { background-color: #2196F3; }
         
-        self.canvas_scroll.configure(yscrollcommand=self.v_scrollbar.set, xscrollcommand=self.h_scrollbar.set)
+        /* Ocultar input file original */
+        input[type="file"] { display: none; }
+
+        /* --- VISTA DE HORARIOS (TIPO TKINTER / COMIC SANS) --- */
+        #contenedor-horarios {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+        }
+        .bloque-hora {
+            background: white;
+            padding: 10px;
+            break-inside: avoid;
+        }
+        .hora-titulo {
+            background-color: #CCFF00 !important;
+            color: black;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 5px 10px;
+            display: inline-block;
+            border-bottom: 2px solid black;
+            min-width: 150px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        td {
+            color: #000080;
+            font-size: 14px;
+            font-style: italic;
+            padding: 4px 2px;
+            vertical-align: top;
+        }
+        .col-nombre { width: 50%; }
+        .col-fin { width: 25%; font-weight: bold; }
+        .col-sig { width: 25%; font-weight: bold; }
+
+        /* --- ESTILOS PARA IMPRESIÓN --- */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .app-container { box-shadow: none; padding: 0; width: 100%; max-width: 100%; }
+            #contenedor-horarios { display: flex; flex-wrap: wrap; gap: 20px; }
+            .bloque-hora { width: 45%; } /* Dos columnas al imprimir */
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="no-print">
+        <h1>Organizador Diario de Turnos</h1>
+        <div class="instrucciones">Selecciona la sección y sube el Excel de hoy para generar la vista</div>
+
+        <div class="controles">
+            <label style="font-weight: bold;">Filtrar por:</label>
+            <select id="combo-seccion">
+                <option value="CARRUSEL PK ALM.">CARRUSEL PK ALM.</option>
+                <option value="CARRUSEL PC ALM.">CARRUSEL PC ALM.</option>
+                <option value="DEVOLUCIONES ALM.">DEVOLUCIONES ALM.</option>
+                <option value="EXPEDICIONES ALM.">EXPEDICIONES ALM.</option>
+            </select>
+
+            <label for="archivo-excel" class="btn btn-cargar" id="lbl-cargar">
+                📁 Cargar Archivo Excel
+            </label>
+            <input type="file" id="archivo-excel" accept=".xlsx, .xls">
+
+            <button class="btn btn-imprimir" id="btn-imprimir" disabled onclick="window.print()">
+                🖨️ Imprimir / PDF
+            </button>
+        </div>
+    </div>
+
+    <div id="contenedor-horarios">
+        <!-- Aquí se dibujarán los datos con JS -->
+    </div>
+</div>
+
+<script>
+    // --- LÓGICA PRINCIPAL (REPLICA DE PYTHON A JS) ---
+
+    // Abreviaciones de secciones
+    const ABREVIACIONES = {
+        "CARRUSEL PC ALM.": "CONF",
+        "CARRUSEL PK ALM.": "PAQ",
+        "EXPEDICIONES ALM.": "EXP",
+        "DEVOLUCIONES ALM.": "DEVO"
+    };
+
+    // Función para formatear la hora, extrayendo si es número de Excel o Texto
+    function formatTime(val) {
+        if (val === undefined || val === null || val === "") return "";
         
-        self.canvas_scroll.grid(row=0, column=0, sticky="nsew")
-        self.v_scrollbar.grid(row=0, column=1, sticky="ns")
-        self.h_scrollbar.grid(row=1, column=0, sticky="ew")
-
-        self.main_frame.grid_rowconfigure(0, weight=1)
-        self.main_frame.grid_columnconfigure(0, weight=1)
+        // Si Excel pasa la hora como decimal (ej. 0.25 para las 06:00)
+        if (typeof val === 'number') {
+            let totalMinutes = Math.round(val * 24 * 60);
+            let h = Math.floor(totalMinutes / 60) % 24;
+            let m = totalMinutes % 60;
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+        }
         
-        self.scrollable_frame = tk.Frame(self.canvas_scroll, bg="white")
-        self.canvas_window = self.canvas_scroll.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-
-        self.lbl_instruccion = tk.Label(self.scrollable_frame, text="Selecciona la sección y sube el Excel de hoy para generar la vista", font=("Arial", 14), bg="white")
-        self.lbl_instruccion.pack(pady=15)
-
-        self.frame_controles = tk.Frame(self.scrollable_frame, bg="white")
-        self.frame_controles.pack(pady=10)
-
-        tk.Label(self.frame_controles, text="Filtrar por:", font=("Arial", 12, "bold"), bg="white").grid(row=0, column=0, padx=5)
+        // Si viene como texto
+        let s = String(val).trim();
+        if (s.includes(' ')) s = s.split(' ').pop(); // Quitar la fecha si viene pegada
+        let match = s.match(/(\d{1,2}):(\d{2})/);
+        if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
         
-        self.opciones_seccion = [
-            "CARRUSEL PK ALM.",
-            "CARRUSEL PC ALM.",
-            "DEVOLUCIONES ALM.",
-            "EXPEDICIONES ALM."
-        ]
-        
-        self.combo_seccion = ttk.Combobox(self.frame_controles, values=self.opciones_seccion, font=("Arial", 12), state="readonly", width=22)
-        self.combo_seccion.current(0) 
-        self.combo_seccion.grid(row=0, column=1, padx=15)
+        return s;
+    }
 
-        self.btn_cargar = tk.Button(self.frame_controles, text="📁 Cargar Archivo Excel", command=self.procesar_archivo, 
-                                    font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", padx=10, pady=5)
-        self.btn_cargar.grid(row=0, column=2, padx=5)
+    // Calcular minutos lógicos (Día empieza a las 06:00) - CLAVE PARA EL TURNO DE NOCHE
+    function calcularMinutosLogicos(horaStr) {
+        if (!horaStr) return 9999;
+        let partes = horaStr.split(':');
+        if (partes.length < 2) return 9999;
+        let h = parseInt(partes[0]);
+        let m = parseInt(partes[1]);
+        let hLogica = (h - 6 + 24) % 24; 
+        return hLogica * 60 + m;
+    }
 
-        # --- NUEVO: BOTÓN DE IMPRESIÓN ---
-        self.btn_imprimir = tk.Button(self.frame_controles, text="🖨️ Imprimir / PDF", command=self.imprimir_horario, 
-                                      font=("Arial", 12, "bold"), bg="#2196F3", fg="white", padx=10, pady=5)
-        self.btn_imprimir.grid(row=0, column=3, padx=5)
-        self.btn_imprimir.config(state="disabled") # Desactivado hasta que carguemos datos
-        
-        self.turnos_actuales = {} # Guardará los datos para imprimir
-        # ---------------------------------
+    document.getElementById('archivo-excel').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
 
-        self.frame_horarios = tk.Frame(self.scrollable_frame, bg="white")
-        self.frame_horarios.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        self.scrollable_frame.bind("<Configure>", self.on_frame_configure)
-        self.root.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.root.bind_all("<Shift-MouseWheel>", self._on_shift_mousewheel)
+        const seccionElegida = document.getElementById('combo-seccion').value.trim().toUpperCase();
+        const lblCargar = document.getElementById('lbl-cargar');
+        const btnImprimir = document.getElementById('btn-imprimir');
+        const contenedor = document.getElementById('contenedor-horarios');
 
-    def on_frame_configure(self, event=None):
-        self.canvas_scroll.configure(scrollregion=self.canvas_scroll.bbox("all"))
+        // Estado Cargando
+        lblCargar.innerHTML = "⏳ Procesando datos...";
+        lblCargar.style.pointerEvents = 'none';
+        btnImprimir.disabled = true;
+        contenedor.innerHTML = "";
 
-    def _on_mousewheel(self, event):
-        self.canvas_scroll.yview_scroll(int(-1*(event.delta/120)), "units")
-
-    def _on_shift_mousewheel(self, event):
-        self.canvas_scroll.xview_scroll(int(-1*(event.delta/120)), "units")
-
-    def procesar_archivo(self):
-        archivo_entrada = filedialog.askopenfilename(
-            title="Selecciona el Excel descargado de hoy",
-            filetypes=[("Archivos Excel", "*.xlsx *.xls")]
-        )
-        
-        if not archivo_entrada:
-            return
-
-        # --- MENSAJE CARGANDO ---
-        self.btn_cargar.config(text="⏳ Procesando datos...", state="disabled")
-        self.root.update_idletasks() 
-        # -------------------------------
-
-        try:
-            df = pd.read_excel(archivo_entrada)
-            df.columns = df.columns.str.strip().str.lower()
-            
-            columnas_req = ['nombre empleado', 'hora inicio', 'hora fin', 'sección tarea']
-            for col in columnas_req:
-                if col not in df.columns:
-                    messagebox.showerror("Error", f"El Excel debe contener la columna '{col}'.")
-                    return
-            
-            # 1. Limpieza de tiempos (Extremadamente robusta para evitar fallos si Excel usa fechas ocultas)
-            def format_time(x):
-                if pd.isna(x): return ""
-                if hasattr(x, 'strftime'): return x.strftime("%H:%M")
-                s = str(x).strip()
-                if ' ' in s: s = s.split(' ')[-1] # Ignorar fecha si viene pegada
-                if len(s) > 5: s = s[:5]
-                if len(s) == 4 and s[1] == ':': s = "0" + s
-                return s
-
-            df['hora_inicio_limpia'] = df['hora inicio'].apply(format_time)
-            df['hora_fin_limpia'] = df['hora fin'].apply(format_time)
-            
-            # Quitar filas inválidas vitales
-            df = df[(df['hora_inicio_limpia'] != "") & (df['hora_fin_limpia'] != "")]
-            df = df.dropna(subset=['nombre empleado'])
-
-            # 2. Orden Cronológico Perfecto (Evitar que 00:00 se ordene antes que 22:00)
-            def calcular_minutos_logicos(hora_str):
-                try:
-                    h, m = map(int, hora_str.split(':'))
-                    h_logica = (h - 6) % 24 # El día empieza a las 06:00
-                    return h_logica * 60 + m
-                except:
-                    return 9999
-
-            df['minutos_orden'] = df['hora_inicio_limpia'].apply(calcular_minutos_logicos)
-            df['nombre_upper'] = df['nombre empleado'].astype(str).str.strip().str.upper()
-            
-            # Ordenamos verdaderamente por cronología
-            df = df.sort_values(by=['nombre_upper', 'minutos_orden']).reset_index(drop=True)
-
-            # 3. Tratamiento de Tareas (Herencia de espacios en blanco)
-            df['tarea_upper'] = df['sección tarea'].astype(str).str.strip().str.upper()
-            
-            # Cambiamos cualquier cosa vacía por None (nativo de Python para que pandas ffill funcione)
-            df['tarea_upper'] = df['tarea_upper'].replace(['NAN', 'NAT', 'NULL', 'NONE', ''], None)
-            
-            # Rellenar tareas vacías con la tarea anterior de ese mismo operario
-            df['tarea_upper'] = df.groupby('nombre_upper')['tarea_upper'].ffill()
-            # Por si acaso la primera tarea del día es la que estaba vacía, rellenamos con la siguiente
-            df['tarea_upper'] = df.groupby('nombre_upper')['tarea_upper'].bfill()
-            
-            df = df.dropna(subset=['tarea_upper'])
-
-            # Extraemos la hora para la columna visual (ej: "12")
-            df['hora_int'] = pd.to_numeric(df['hora_inicio_limpia'].str.split(':').str[0], errors='coerce')
-            df = df.dropna(subset=['hora_int'])
-
-            # 4. Creación de Bloques Continuos (Detectar turnos partidos)
-            cambio_empleado = df['nombre_upper'] != df['nombre_upper'].shift(1)
-            cambio_tarea = df['tarea_upper'] != df['tarea_upper'].shift(1)
-            
-            # --- CORRECCIÓN: Ignoramos los descansos para que un mismo operario en la misma tarea se agrupe ---
-            df['bloque_id'] = (cambio_empleado | cambio_tarea).cumsum()
-            # --------------------------------------------------------------------------------------------------
-
-            # 5. Filtrar y Agrupar según selección
-            seccion_elegida = self.combo_seccion.get().strip().upper()
-            
-            df_filtrado = df[df['tarea_upper'].str.contains(seccion_elegida, na=False)].copy()
-
-            if df_filtrado.empty:
-                messagebox.showwarning("Aviso", f"No se encontró a nadie en la sección:\n{seccion_elegida}")
-                return
-            
-            # Agrupamos por el bloque para no mezclar las repeticiones (ej. Alberto vuelve a las 12H)
-            resumen = df_filtrado.groupby(['bloque_id', 'nombre_upper']).apply(
-                lambda g: pd.Series({
-                    'hora_turno': g['hora_int'].iloc[0],
-                    'ultima_hora_fin': g['hora_fin_limpia'].iloc[-1],
-                    'ultimo_idx': g.index[-1]
-                })
-            ).reset_index()
-            
-            def obtener_siguiente_seccion(row):
-                empleado = row['nombre_upper']
-                idx = row['ultimo_idx']
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array', cellDates: false});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
                 
-                # Buscar en el df general qué hace ese operario DESPUÉS de este bloque
-                df_emp = df[(df['nombre_upper'] == empleado) & (df.index > idx)]
+                // Convertimos la hoja a JSON
+                const rawRows = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
                 
-                # Buscar la primera tarea que no sea la actual
-                futuras = df_emp[~df_emp['tarea_upper'].str.contains(seccion_elegida, na=False)]
-                
-                if not futuras.empty:
-                    sig_str = futuras.iloc[0]['tarea_upper']
-                    
-                    abreviaciones = {
-                        "CARRUSEL PC ALM.": "CONF",
-                        "CARRUSEL PK ALM.": "PAQ",
-                        "EXPEDICIONES ALM.": "EXP",
-                        "DEVOLUCIONES ALM.": "DEVO"
+                // Normalizar nombres de columnas (minúsculas, sin espacios extra)
+                const rows = rawRows.map(row => {
+                    let newRow = {};
+                    for (let key in row) {
+                        newRow[key.trim().toLowerCase()] = row[key];
                     }
-                    return abreviaciones.get(sig_str, sig_str)
-                return "FIN TURNO"
+                    return newRow;
+                });
 
-            resumen['siguiente_seccion'] = resumen.apply(obtener_siguiente_seccion, axis=1)
-
-            # --- CORRECCIÓN ORDEN DE HORAS (Turno de Noche) ---
-            def orden_turno(h):
-                return (int(h) - 6) % 24
-
-            turnos = {}
-            for hora in sorted(resumen['hora_turno'].unique(), key=orden_turno):
-                empleados_hora = resumen[resumen['hora_turno'] == hora]
-                lista_datos = []
-                for _, row in empleados_hora.iterrows():
-                    lista_datos.append({
-                        'nombre': row['nombre_upper'],
-                        'fin': row['ultima_hora_fin'],
-                        'sig': row['siguiente_seccion']
-                    })
-                
-                # --- NUEVO ORDEN: Usamos calcular_minutos_logicos para la hora de fin ---
-                # Esto asegura que las 23:00 vayan antes que las 01:00 en el turno de noche
-                lista_datos.sort(key=lambda x: (calcular_minutos_logicos(x['fin']), x['sig'], x['nombre']))
-                turnos[int(hora)] = lista_datos
-
-            self.turnos_actuales = turnos
-            self.dibujar_vista(turnos)
-            
-            self.btn_imprimir.config(state="normal")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Ocurrió un problema al leer el archivo:\n{str(e)}")
-        finally:
-            self.btn_cargar.config(text="📁 Cargar Archivo Excel", state="normal")
-
-    def dibujar_vista(self, turnos):
-        for widget in self.frame_horarios.winfo_children():
-            widget.destroy()
-
-        columna = 0
-        fila = 0
-        max_columnas = 3 
-
-        for hora, lista_datos in turnos.items():
-            cantidad_personas = len(lista_datos)
-            
-            frame_hora = tk.Frame(self.frame_horarios, bg="white", padx=15, pady=10)
-            frame_hora.grid(row=fila, column=columna, sticky="nw")
-
-            lbl_hora = tk.Label(frame_hora, text=f"{hora} H ({cantidad_personas} pers.)", 
-                                bg="#CCFF00", fg="black", 
-                                font=("Comic Sans MS", 14, "bold"), width=16, anchor="w")
-            lbl_hora.pack(anchor="w")
-
-            tk.Frame(frame_hora, height=2, bg="black", width=350).pack(anchor="w", pady=(2, 5))
-
-            frame_tabla = tk.Frame(frame_hora, bg="white")
-            frame_tabla.pack(anchor="w", fill="x")
-
-            for i, datos in enumerate(lista_datos):
-                tk.Label(frame_tabla, text=f"- {datos['nombre']}", 
-                         bg="white", fg="#000080", 
-                         font=("Comic Sans MS", 10, "italic"), anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 15))
-                
-                tk.Label(frame_tabla, text=f"Fin: {datos['fin']}", 
-                         bg="white", fg="#000080", 
-                         font=("Comic Sans MS", 10, "italic", "bold"), anchor="w").grid(row=i, column=1, sticky="w", padx=(0, 15))
-                
-                if datos['sig'] != "FIN TURNO":
-                    texto_sig = f"➔ Sig: {datos['sig']}"
-                else:
-                    texto_sig = ""
-                
-                tk.Label(frame_tabla, text=texto_sig, 
-                         bg="white", fg="#000080", 
-                         font=("Comic Sans MS", 10, "italic", "bold"), anchor="w").grid(row=i, column=2, sticky="w")
-
-            columna += 1
-            if columna >= max_columnas:
-                columna = 0
-                fila += 1
-
-        self.canvas_scroll.yview_moveto(0)
-        self.canvas_scroll.xview_moveto(0)
-
-    def imprimir_horario(self):
-        if not self.turnos_actuales:
-            return
-
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Impresión de Turnos</title>
-            <style>
-                body { font-family: 'Comic Sans MS', cursive, sans-serif; background: white; padding: 20px; }
-                .container { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
-                .bloque { width: 450px; margin-bottom: 20px; break-inside: avoid; }
-                .hora-titulo {
-                    background-color: #CCFF00 !important;
-                    color: black;
-                    font-size: 18px;
-                    font-weight: bold;
-                    padding: 5px;
-                    border-bottom: 2px solid black;
-                    -webkit-print-color-adjust: exact;
-                    print-color-adjust: exact;
+                // Validar columnas
+                if (!rows[0].hasOwnProperty('nombre empleado') || !rows[0].hasOwnProperty('hora inicio') || !rows[0].hasOwnProperty('hora fin')) {
+                    throw new Error("El Excel debe contener 'nombre empleado', 'hora inicio' y 'hora fin'.");
                 }
-                table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-                td { color: #000080; font-size: 12px; font-style: italic; padding: 3px 6px; vertical-align: top; }
-                .col-nombre { width: 50%; }
-                .col-fin { width: 25%; font-weight: bold; }
-                .col-sig { width: 25%; font-weight: bold; }
-                .btn-imprimir {
-                    padding: 15px 30px; font-size: 18px; font-weight: bold; cursor: pointer;
-                    background: #2196F3; color: white; border: none; border-radius: 8px;
-                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                    margin-bottom: 20px;
+
+                // 1. Limpieza y formateo inicial
+                let df = rows.map(r => {
+                    let horaInicio = formatTime(r['hora inicio']);
+                    let horaFin = formatTime(r['hora fin']);
+                    let nombre = String(r['nombre empleado']).trim().toUpperCase();
+                    let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
+                    
+                    if (tareaRaw === 'NAN' || tareaRaw === 'NAT' || tareaRaw === 'NULL' || tareaRaw === 'NONE') {
+                        tareaRaw = "";
+                    }
+
+                    return {
+                        nombre: nombre,
+                        horaInicio: horaInicio,
+                        horaFin: horaFin,
+                        tarea: tareaRaw,
+                        minutosOrden: calcularMinutosLogicos(horaInicio),
+                        horaInt: horaInicio ? parseInt(horaInicio.split(':')[0]) : null
+                    };
+                }).filter(r => r.nombre !== "" && r.horaInicio !== "" && r.horaFin !== "");
+
+                // 2. Orden cronológico (por nombre y luego por hora lógica)
+                df.sort((a, b) => {
+                    if (a.nombre < b.nombre) return -1;
+                    if (a.nombre > b.nombre) return 1;
+                    return a.minutosOrden - b.minutosOrden;
+                });
+
+                // Asignar el índice ordenado para buscar futuros luego
+                df.forEach((r, i) => r.ordenGeneral = i);
+
+                // 3. Rellenar secciones vacías (Forward Fill & Backward Fill)
+                let empDataMap = {};
+                df.forEach(r => {
+                    if (!empDataMap[r.nombre]) empDataMap[r.nombre] = [];
+                    empDataMap[r.nombre].push(r);
+                });
+
+                let dfFiltradoFinal = [];
+
+                for (let emp in empDataMap) {
+                    let empRows = empDataMap[emp];
+                    
+                    // Forward Fill
+                    for (let i = 1; i < empRows.length; i++) {
+                        if (empRows[i].tarea === "") empRows[i].tarea = empRows[i-1].tarea;
+                    }
+                    // Backward Fill (por si la primera era vacía)
+                    for (let i = empRows.length - 2; i >= 0; i--) {
+                        if (empRows[i].tarea === "") empRows[i].tarea = empRows[i+1].tarea;
+                    }
+
+                    // 4. Creación de Bloques Continuos (ignoramos saltos de tiempo para unir descansos)
+                    if(empRows.length > 0 && empRows[0].tarea !== "") {
+                        let bloques = [];
+                        let bloqueActual = {
+                            nombre: emp,
+                            tarea: empRows[0].tarea,
+                            horaTurno: empRows[0].horaInt,
+                            fin: empRows[0].horaFin,
+                            ultimoOrden: empRows[0].ordenGeneral
+                        };
+
+                        for (let i = 1; i < empRows.length; i++) {
+                            let fila = empRows[i];
+                            if (fila.tarea === "") continue;
+
+                            if (fila.tarea === bloqueActual.tarea) {
+                                // Mismo bloque, actualizamos el final
+                                bloqueActual.fin = fila.horaFin;
+                                bloqueActual.ultimoOrden = fila.ordenGeneral;
+                            } else {
+                                // Cambio de tarea = Cerramos bloque e iniciamos otro
+                                bloques.push(bloqueActual);
+                                bloqueActual = {
+                                    nombre: emp,
+                                    tarea: fila.tarea,
+                                    horaTurno: fila.horaInt,
+                                    fin: fila.horaFin,
+                                    ultimoOrden: fila.ordenGeneral
+                                };
+                            }
+                        }
+                        bloques.push(bloqueActual);
+
+                        // 5. Determinar la Siguiente Tarea y filtrar por sección actual
+                        bloques.forEach(b => {
+                            if (b.tarea.includes(seccionElegida)) {
+                                // Buscar futura tarea
+                                let tareasFuturas = empRows.filter(r => r.ordenGeneral > b.ultimoOrden && !r.tarea.includes(seccionElegida) && r.tarea !== "");
+                                
+                                let sigStr = "FIN TURNO";
+                                if (tareasFuturas.length > 0) {
+                                    let rawSig = tareasFuturas[0].tarea;
+                                    sigStr = ABREVIACIONES[rawSig] || rawSig;
+                                }
+
+                                dfFiltradoFinal.push({
+                                    nombre: b.nombre,
+                                    horaTurno: b.horaTurno,
+                                    fin: b.fin,
+                                    sig: sigStr
+                                });
+                            }
+                        });
+                    }
                 }
-                .btn-imprimir:hover { background: #0b7dda; }
-                @media print {
-                    .no-print { display: none !important; }
-                    body { padding: 0; }
+
+                if (dfFiltradoFinal.length === 0) {
+                    alert(`No se encontró a nadie en la sección:\n${seccionElegida}`);
+                    restaurarBoton();
+                    return;
                 }
-            </style>
-        </head>
-        <body>
-            <div class="no-print" style="text-align: center;">
-                <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir o Guardar como PDF</button>
-            </div>
-            <div class="container">
-        """
+
+                // 6. Agrupar por hora de turno
+                let turnos = {};
+                dfFiltradoFinal.forEach(r => {
+                    let h = r.horaTurno;
+                    if (!turnos[h]) turnos[h] = [];
+                    turnos[h].push(r);
+                });
+
+                // Ordenar las horas (las claves del diccionario) cronológicamente
+                let horasOrdenadas = Object.keys(turnos).map(Number).sort((a, b) => {
+                    let valA = (a - 6 + 24) % 24;
+                    let valB = (b - 6 + 24) % 24;
+                    return valA - valB;
+                });
+
+                // 7. Dibujar los resultados
+                horasOrdenadas.forEach(hora => {
+                    let listaDatos = turnos[hora];
+                    
+                    // Ordenar por hora fin, luego por siguiente tarea, luego nombre
+                    listaDatos.sort((a, b) => {
+                        let finA = calcularMinutosLogicos(a.fin);
+                        let finB = calcularMinutosLogicos(b.fin);
+                        if (finA !== finB) return finA - finB;
+                        if (a.sig !== b.sig) return a.sig.localeCompare(b.sig);
+                        return a.nombre.localeCompare(b.nombre);
+                    });
+
+                    // Construir HTML del bloque
+                    let divBloque = document.createElement('div');
+                    divBloque.className = 'bloque-hora';
+                    
+                    let sigHtml = '';
+                    listaDatos.forEach(d => {
+                        let textoSig = d.sig !== "FIN TURNO" ? `➔ Sig: ${d.sig}` : "";
+                        sigHtml += `
+                            <tr>
+                                <td class="col-nombre">- ${d.nombre}</td>
+                                <td class="col-fin">Fin: ${d.fin}</td>
+                                <td class="col-sig">${textoSig}</td>
+                            </tr>
+                        `;
+                    });
+
+                    divBloque.innerHTML = `
+                        <div class="hora-titulo">${hora} H (${listaDatos.length} pers.)</div>
+                        <table>${sigHtml}</table>
+                    `;
+                    
+                    contenedor.appendChild(divBloque);
+                });
+
+                // Éxito
+                btnImprimir.disabled = false;
+                restaurarBoton();
+
+            } catch (err) {
+                console.error(err);
+                alert("Ocurrió un problema al leer el archivo:\n" + err.message);
+                restaurarBoton();
+            }
+        };
+
+        reader.readAsArrayBuffer(file);
         
-        for hora, lista_datos in self.turnos_actuales.items():
-            cantidad = len(lista_datos)
-            html_content += f'<div class="bloque">'
-            html_content += f'<div class="hora-titulo">{hora} H ({cantidad} pers.)</div>'
-            html_content += f'<table>'
-            
-            for datos in lista_datos:
-                sig_texto = f"➔ Sig: {datos['sig']}" if datos['sig'] != "FIN TURNO" else ""
-                
-                html_content += f'''
-                    <tr>
-                        <td class="col-nombre">- {datos['nombre']}</td>
-                        <td class="col-fin">Fin: {datos['fin']}</td>
-                        <td class="col-sig">{sig_texto}</td>
-                    </tr>
-                '''
-                
-            html_content += f'</table></div>'
+        // Limpiamos el input para permitir recargar el mismo archivo si se desea
+        e.target.value = '';
 
-        html_content += """
-            </div>
-        </body>
-        </html>
-        """
+        function restaurarBoton() {
+            lblCargar.innerHTML = "📁 Cargar Archivo Excel";
+            lblCargar.style.pointerEvents = 'auto';
+        }
+    });
+</script>
 
-        fd, path = tempfile.mkstemp(suffix=".html")
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        webbrowser.open('file://' + os.path.realpath(path))
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = AplicacionHorarios(root)
-    root.mainloop()
+</body>
+</html>
