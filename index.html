@@ -72,7 +72,7 @@
         /* --- VISTA DE HORARIOS (TIPO TKINTER / COMIC SANS) --- */
         #contenedor-horarios {
             display: grid;
-            /* CAMBIO: Bloques más anchos (mínimo 420px) para que los nombres no se solapen */
+            
             grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
             gap: 25px;
             font-family: 'Comic Sans MS', cursive, sans-serif;
@@ -81,12 +81,12 @@
             background: white;
             padding: 10px;
             break-inside: avoid;
-            font-size: 14px;
+            font-size: 12px;
         }
         .hora-titulo {
             background-color: #CCFF00 !important;
             color: black;
-            font-size: 18px;
+            font-size: 13px;
             font-weight: bold;
             padding: 5px 10px;
             display: inline-block;
@@ -102,24 +102,31 @@
         }
         td {
             color: #000080;
-            font-size: 12x;
+            font-size: 12px; /* Corregido de 12x a 12px */
             font-style: italic;
-            padding: 4px 2px;
+            padding: 6px 2px; /* Relleno aumentado para separar la línea del texto */
             vertical-align: top;
+            border-bottom: 1px solid #ccc; /* NUEVA LÍNEA: Separador inferior */
+        }
+        
+        /* Opcional: Quitar la línea al último elemento para que quede más limpio */
+        tr:last-child td {
+            border-bottom: none;
         }
         
         /* Ajuste de columnas para dar más espacio al nombre y evitar saltos */
-        .col-nombre { width: 35%; }
-        .col-fin { width: 15%; font-weight: bold; }
-        .col-sig { width: 20%; font-weight: bold; }
+        .col-nombre { width: 40%; }
+        .col-fin { width: 12%; font-weight: bold; }
+        .col-sig { width: 18%; font-weight: bold; }
 
         /* --- ESTILOS PARA IMPRESIÓN --- */
         @media print {
+            @page { margin: 3mm; }
             .no-print { display: none !important; }
-            body { background: white; padding: 0;  }
+            body { background: white; padding: 0; }
             .app-container { box-shadow: none; padding: 0; width: 100%; max-width: 100%; }
             #contenedor-horarios { display: flex; flex-wrap: wrap; gap: 15px; }
-            .bloque-hora { width: 30%; font-size: 12px; } /* Dos columnas al imprimir */
+            .bloque-hora { width: 30%; font-size: 12px; } /* Tres columnas al imprimir */
         }
     </style>
 </head>
