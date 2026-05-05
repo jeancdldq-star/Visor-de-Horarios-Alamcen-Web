@@ -14,7 +14,6 @@
             padding: 20px;
         }
         .app-container {
-            /* CAMBIO: Ahora ocupa el 96% de la pantalla hasta un máximo de 1800px */
             width: 96%;
             max-width: 1800px;
             margin: 0 auto;
@@ -72,7 +71,6 @@
         /* --- VISTA DE HORARIOS (TIPO TKINTER / COMIC SANS) --- */
         #contenedor-horarios {
             display: grid;
-            
             grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
             gap: 25px;
             font-family: 'Comic Sans MS', cursive, sans-serif;
@@ -102,11 +100,11 @@
         }
         td {
             color: #000080;
-            font-size: 12px; /* Corregido de 12x a 12px */
+            font-size: 12px;
             font-style: italic;
-            padding: 6px 2px; /* Relleno aumentado para separar la línea del texto */
+            padding: 6px 2px;
             vertical-align: top;
-            border-bottom: 1px solid #ccc; /* NUEVA LÍNEA: Separador inferior */
+            border-bottom: 1px solid #ccc;
         }
         
         /* Opcional: Quitar la línea al último elemento para que quede más limpio */
@@ -162,7 +160,7 @@
 </div>
 
 <script>
-    // --- LÓGICA PRINCIPAL (REPLICA DE PYTHON A JS) ---
+    // --- LÓGICA PRINCIPAL ---
 
     // Abreviaciones de secciones
     const ABREVIACIONES = {
@@ -193,7 +191,7 @@
         return s;
     }
 
-    // Calcular minutos lógicos (Día empieza a las 06:00) - CLAVE PARA EL TURNO DE NOCHE
+    // Calcular minutos lógicos (Día empieza a las 06:00) - CLAVE PARA EL TURNO DE NOCHE Y ORDENAMIENTO DE HORAS EXTRAS
     function calcularMinutosLogicos(horaStr) {
         if (!horaStr) return 9999;
         let partes = horaStr.split(':');
@@ -201,7 +199,7 @@
         let h = parseInt(partes[0]);
         let m = parseInt(partes[1]);
         let hLogica = (h - 6 + 24) % 24; 
-        return hLogica * 60 + m;
+        return hLogica * 60 + m; // Ahora suma los minutos reales para saber quién va primero
     }
 
     document.getElementById('archivo-excel').addEventListener('change', function(e) {
@@ -249,15 +247,15 @@
                     let horaInicio = formatTime(r['hora inicio']);
                     let horaFin = formatTime(r['hora fin']);
                     
-                    // --- AQUÍ ESTÁ LA MODIFICACIÓN DE LOS NOMBRES ---
+                    // --- MODIFICACIÓN DE LOS NOMBRES ---
                     let nombreBruto = String(r['nombre empleado']).trim().toUpperCase();
-                    let partesNombre = nombreBruto.split(/\s+/); // Separa el nombre por espacios
+                    let partesNombre = nombreBruto.split(/\s+/);
 
                     // Si tiene 3 o más palabras, eliminamos la última
                     if (partesNombre.length >= 3) {
                         partesNombre.pop(); 
                     }
-                    let nombre = partesNombre.join(' '); // Vuelve a unir el nombre
+                    let nombre = partesNombre.join(' '); 
                     // ------------------------------------------------
 
                     let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
@@ -268,11 +266,10 @@
 
                     return {
                         nombre: nombre,
-                        horaInicio: horaInicio,
+                        horaInicio: horaInicio, // Mantenemos la hora exacta (ej. 06:30)
                         horaFin: horaFin,
                         tarea: tareaRaw,
-                        minutosOrden: calcularMinutosLogicos(horaInicio),
-                        horaInt: horaInicio ? parseInt(horaInicio.split(':')[0]) : null
+                        minutosOrden: calcularMinutosLogicos(horaInicio)
                     };
                 }).filter(r => r.nombre !== "" && r.horaInicio !== "" && r.horaFin !== "");
 
@@ -313,7 +310,7 @@
                         let bloqueActual = {
                             nombre: emp,
                             tarea: empRows[0].tarea,
-                            horaTurno: empRows[0].horaInt,
+                            horaTurno: empRows[0].horaInicio, // AHORA USAMOS LA HORA EXACTA (EJ: 06:30)
                             fin: empRows[0].horaFin,
                             ultimoOrden: empRows[0].ordenGeneral
                         };
@@ -332,7 +329,7 @@
                                 bloqueActual = {
                                     nombre: emp,
                                     tarea: fila.tarea,
-                                    horaTurno: fila.horaInt,
+                                    horaTurno: fila.horaInicio, // AHORA USAMOS LA HORA EXACTA
                                     fin: fila.horaFin,
                                     ultimoOrden: fila.ordenGeneral
                                 };
@@ -354,7 +351,7 @@
 
                                 dfFiltradoFinal.push({
                                     nombre: b.nombre,
-                                    horaTurno: b.horaTurno,
+                                    horaTurno: b.horaTurno, // Guardamos la hora exacta como ID de grupo
                                     fin: b.fin,
                                     sig: sigStr
                                 });
@@ -369,7 +366,7 @@
                     return;
                 }
 
-                // 6. Agrupar por hora de turno
+                // 6. Agrupar por hora de turno exacta (ej: "06:30", "07:00")
                 let turnos = {};
                 dfFiltradoFinal.forEach(r => {
                     let h = r.horaTurno;
@@ -377,11 +374,9 @@
                     turnos[h].push(r);
                 });
 
-                // Ordenar las horas (las claves del diccionario) cronológicamente
-                let horasOrdenadas = Object.keys(turnos).map(Number).sort((a, b) => {
-                    let valA = (a - 6 + 24) % 24;
-                    let valB = (b - 6 + 24) % 24;
-                    return valA - valB;
+                // Ordenar las horas (las claves del diccionario) cronológicamente calculando los minutos reales
+                let horasOrdenadas = Object.keys(turnos).sort((a, b) => {
+                    return calcularMinutosLogicos(a) - calcularMinutosLogicos(b);
                 });
 
                 // 7. Dibujar los resultados
