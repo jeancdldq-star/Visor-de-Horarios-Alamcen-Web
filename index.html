@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor Diario de Turnos MD</title>
+    <title>Visor Diario de Turnos MD - 3 Turnos (Con Memoria)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
@@ -62,13 +62,16 @@
         }
         .btn:hover { opacity: 0.85; }
         .btn:disabled { background: #aaa !important; cursor: not-allowed; }
-        .btn-cargar { background-color: #4CAF50; }
+        
+        /* Botones independientes para los 3 turnos */
+        .btn-manana { background-color: #4CAF50; }
+        .btn-tarde { background-color: #f39c12; }
+        .btn-noche { background-color: #5e35b1; }
         .btn-imprimir { background-color: #2196F3; }
         
-        /* Ocultar input file original */
         input[type="file"] { display: none; }
 
-        /* --- VISTA DE HORARIOS (TIPO TKINTER / COMIC SANS) --- */
+        /* --- VISTA DE HORARIOS --- */
         #contenedor-horarios {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
@@ -106,16 +109,11 @@
             vertical-align: top;
             border-bottom: 1px solid #ccc;
         }
+        tr:last-child td { border-bottom: none; }
         
-        /* Opcional: Quitar la línea al último elemento para que quede más limpio */
-        tr:last-child td {
-            border-bottom: none;
-        }
-        
-        /* Ajuste de columnas para dar más espacio al nombre y evitar saltos */
         .col-nombre { width: 40%; }
         .col-fin { width: 12%; font-weight: bold; }
-        .col-sig { width: 18%; font-weight: bold; }
+        .col-sig { width: 22%; font-weight: bold; }
 
         /* --- ESTILOS PARA IMPRESIÓN --- */
         @media print {
@@ -124,7 +122,7 @@
             body { background: white; padding: 0; }
             .app-container { box-shadow: none; padding: 0; width: 100%; max-width: 100%; }
             #contenedor-horarios { display: flex; flex-wrap: wrap; gap: 15px; }
-            .bloque-hora { width: 30%; font-size: 12px; } /* Tres columnas al imprimir */
+            .bloque-hora { width: 30%; font-size: 12px; }
         }
     </style>
 </head>
@@ -133,7 +131,7 @@
 <div class="app-container">
     <div class="no-print">
         <h1>Visor Diario de Turnos</h1>
-        <div class="instrucciones">Selecciona la sección y sube el Excel de hoy para generar la vista</div>
+        <div class="instrucciones">Elige el planificador según tu turno. Puedes cambiar la sección sin volver a subir el Excel.</div>
 
         <div class="controles">
             <label style="font-weight: bold;">Filtrar por:</label>
@@ -144,25 +142,35 @@
                 <option value="EXPEDICIONES ALM.">EXPEDICIONES ALM.</option>
             </select>
 
-            <label for="archivo-excel" class="btn btn-cargar" id="lbl-cargar">
-                📁 Cargar Archivo Excel
+            <label for="archivo-manana" class="btn btn-manana" id="lbl-manana">
+                ☀️ Planificador Mañana
             </label>
-            <input type="file" id="archivo-excel" accept=".xlsx, .xls">
+            <input type="file" id="archivo-manana" accept=".xlsx, .xls">
+
+            <label for="archivo-tarde" class="btn btn-tarde" id="lbl-tarde">
+                ⛅ Planificador Tarde
+            </label>
+            <input type="file" id="archivo-tarde" accept=".xlsx, .xls">
+            
+            <label for="archivo-noche" class="btn btn-noche" id="lbl-noche">
+                🌙 Planificador Noche
+            </label>
+            <input type="file" id="archivo-noche" accept=".xlsx, .xls">
 
             <button class="btn btn-imprimir" id="btn-imprimir" disabled onclick="window.print()">
-                🖨️ Imprimir / PDF
+                🖨️ Imprimir
             </button>
         </div>
     </div>
 
-    <div id="contenedor-horarios">
-        </div>
+    <div id="contenedor-horarios"></div>
 </div>
 
 <script>
-    // --- LÓGICA PRINCIPAL ---
+    // --- VARIABLES GLOBALES PARA LA MEMORIA ---
+    let datosExcelCrudos = []; // Guarda el Excel en bruto
+    let turnoActualElegido = ""; // Recuerda qué botón pulsaste (mañana, tarde o noche)
 
-    // Abreviaciones de secciones
     const ABREVIACIONES = {
         "CARRUSEL PC ALM.": "CONF",
         "CARRUSEL PK ALM.": "PAQ",
@@ -170,28 +178,21 @@
         "DEVOLUCIONES ALM.": "DEVO"
     };
 
-    // Función para formatear la hora, extrayendo si es número de Excel o Texto
     function formatTime(val) {
         if (val === undefined || val === null || val === "") return "";
-        
-        // Si Excel pasa la hora como decimal (ej. 0.25 para las 06:00)
         if (typeof val === 'number') {
             let totalMinutes = Math.round(val * 24 * 60);
             let h = Math.floor(totalMinutes / 60) % 24;
             let m = totalMinutes % 60;
             return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
         }
-        
-        // Si viene como texto
         let s = String(val).trim();
-        if (s.includes(' ')) s = s.split(' ').pop(); // Quitar la fecha si viene pegada
+        if (s.includes(' ')) s = s.split(' ').pop();
         let match = s.match(/(\d{1,2}):(\d{2})/);
         if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
-        
         return s;
     }
 
-    // Calcular minutos lógicos (Día empieza a las 06:00) - CLAVE PARA EL TURNO DE NOCHE Y ORDENAMIENTO DE HORAS EXTRAS
     function calcularMinutosLogicos(horaStr) {
         if (!horaStr) return 9999;
         let partes = horaStr.split(':');
@@ -199,244 +200,261 @@
         let h = parseInt(partes[0]);
         let m = parseInt(partes[1]);
         let hLogica = (h - 6 + 24) % 24; 
-        return hLogica * 60 + m; // Ahora suma los minutos reales para saber quién va primero
+        return hLogica * 60 + m; 
     }
 
-    document.getElementById('archivo-excel').addEventListener('change', function(e) {
+    // --- MAGIA APLICADA AQUÍ ---
+    // Cuando cambias el desplegable, si hay datos en memoria, recalcula y pinta al instante
+    document.getElementById('combo-seccion').addEventListener('change', () => {
+        if (datosExcelCrudos.length > 0 && turnoActualElegido !== "") {
+            const nuevaSeccion = document.getElementById('combo-seccion').value.trim().toUpperCase();
+            let datosListos = extraerDatos(datosExcelCrudos, nuevaSeccion, turnoActualElegido);
+            renderizarPantalla(datosListos);
+        } else {
+            document.getElementById('contenedor-horarios').innerHTML = "";
+            document.getElementById('btn-imprimir').disabled = true;
+        }
+    });
+
+    document.getElementById('archivo-manana').addEventListener('change', (e) => manejarArchivo(e, 'manana'));
+    document.getElementById('archivo-tarde').addEventListener('change', (e) => manejarArchivo(e, 'tarde'));
+    document.getElementById('archivo-noche').addEventListener('change', (e) => manejarArchivo(e, 'noche'));
+
+    function manejarArchivo(e, turno) {
         const file = e.target.files[0];
         if (!file) return;
 
         const seccionElegida = document.getElementById('combo-seccion').value.trim().toUpperCase();
-        const lblCargar = document.getElementById('lbl-cargar');
-        const btnImprimir = document.getElementById('btn-imprimir');
-        const contenedor = document.getElementById('contenedor-horarios');
+        const lblActivo = document.getElementById('lbl-' + turno);
+        const txtOriginal = lblActivo.innerHTML;
 
-        // Estado Cargando
-        lblCargar.innerHTML = "⏳ Procesando datos...";
-        lblCargar.style.pointerEvents = 'none';
-        btnImprimir.disabled = true;
-        contenedor.innerHTML = "";
+        lblActivo.innerHTML = "⏳ Procesando...";
+        lblActivo.style.pointerEvents = 'none';
 
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function(evento) {
             try {
-                const data = new Uint8Array(e.target.result);
+                const data = new Uint8Array(evento.target.result);
                 const workbook = XLSX.read(data, {type: 'array', cellDates: false});
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                
-                // Convertimos la hoja a JSON
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                 const rawRows = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
                 
-                // Normalizar nombres de columnas (minúsculas, sin espacios extra)
                 const rows = rawRows.map(row => {
                     let newRow = {};
-                    for (let key in row) {
-                        newRow[key.trim().toLowerCase()] = row[key];
-                    }
+                    for (let key in row) newRow[key.trim().toLowerCase()] = row[key];
                     return newRow;
                 });
 
-                // Validar columnas
                 if (!rows[0].hasOwnProperty('nombre empleado') || !rows[0].hasOwnProperty('hora inicio') || !rows[0].hasOwnProperty('hora fin')) {
-                    throw new Error("El Excel debe contener 'nombre empleado', 'hora inicio' y 'hora fin'.");
+                    throw new Error("Faltan columnas requeridas en el Excel.");
                 }
 
-                // 1. Limpieza y formateo inicial
-                let df = rows.map(r => {
-                    let horaInicio = formatTime(r['hora inicio']);
-                    let horaFin = formatTime(r['hora fin']);
-                    
-                    // --- MODIFICACIÓN DE LOS NOMBRES ---
-                    let nombreBruto = String(r['nombre empleado']).trim().toUpperCase();
-                    let partesNombre = nombreBruto.split(/\s+/);
+                // Guardamos en memoria global por si cambian el desplegable después
+                datosExcelCrudos = rows;
+                turnoActualElegido = turno;
 
-                    // Si tiene 3 o más palabras, eliminamos la última
-                    if (partesNombre.length >= 3) {
-                        partesNombre.pop(); 
-                    }
-                    let nombre = partesNombre.join(' '); 
-                    // ------------------------------------------------
+                let datosListos = extraerDatos(datosExcelCrudos, seccionElegida, turnoActualElegido);
 
-                    let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
-                    
-                    if (tareaRaw === 'NAN' || tareaRaw === 'NAT' || tareaRaw === 'NULL' || tareaRaw === 'NONE') {
-                        tareaRaw = "";
-                    }
-
-                    return {
-                        nombre: nombre,
-                        horaInicio: horaInicio, // Mantenemos la hora exacta (ej. 06:30)
-                        horaFin: horaFin,
-                        tarea: tareaRaw,
-                        minutosOrden: calcularMinutosLogicos(horaInicio)
-                    };
-                }).filter(r => r.nombre !== "" && r.horaInicio !== "" && r.horaFin !== "");
-
-                // 2. Orden cronológico (por nombre y luego por hora lógica)
-                df.sort((a, b) => {
-                    if (a.nombre < b.nombre) return -1;
-                    if (a.nombre > b.nombre) return 1;
-                    return a.minutosOrden - b.minutosOrden;
-                });
-
-                // Asignar el índice ordenado para buscar futuros luego
-                df.forEach((r, i) => r.ordenGeneral = i);
-
-                // 3. Rellenar secciones vacías (Forward Fill & Backward Fill)
-                let empDataMap = {};
-                df.forEach(r => {
-                    if (!empDataMap[r.nombre]) empDataMap[r.nombre] = [];
-                    empDataMap[r.nombre].push(r);
-                });
-
-                let dfFiltradoFinal = [];
-
-                for (let emp in empDataMap) {
-                    let empRows = empDataMap[emp];
-                    
-                    // Forward Fill
-                    for (let i = 1; i < empRows.length; i++) {
-                        if (empRows[i].tarea === "") empRows[i].tarea = empRows[i-1].tarea;
-                    }
-                    // Backward Fill (por si la primera era vacía)
-                    for (let i = empRows.length - 2; i >= 0; i--) {
-                        if (empRows[i].tarea === "") empRows[i].tarea = empRows[i+1].tarea;
-                    }
-
-                    // 4. Creación de Bloques Continuos (ignoramos saltos de tiempo para unir descansos)
-                    if(empRows.length > 0 && empRows[0].tarea !== "") {
-                        let bloques = [];
-                        let bloqueActual = {
-                            nombre: emp,
-                            tarea: empRows[0].tarea,
-                            horaTurno: empRows[0].horaInicio, // AHORA USAMOS LA HORA EXACTA (EJ: 06:30)
-                            fin: empRows[0].horaFin,
-                            ultimoOrden: empRows[0].ordenGeneral
-                        };
-
-                        for (let i = 1; i < empRows.length; i++) {
-                            let fila = empRows[i];
-                            if (fila.tarea === "") continue;
-
-                            if (fila.tarea === bloqueActual.tarea) {
-                                // Mismo bloque, actualizamos el final
-                                bloqueActual.fin = fila.horaFin;
-                                bloqueActual.ultimoOrden = fila.ordenGeneral;
-                            } else {
-                                // Cambio de tarea = Cerramos bloque e iniciamos otro
-                                bloques.push(bloqueActual);
-                                bloqueActual = {
-                                    nombre: emp,
-                                    tarea: fila.tarea,
-                                    horaTurno: fila.horaInicio, // AHORA USAMOS LA HORA EXACTA
-                                    fin: fila.horaFin,
-                                    ultimoOrden: fila.ordenGeneral
-                                };
-                            }
-                        }
-                        bloques.push(bloqueActual);
-
-                        // 5. Determinar la Siguiente Tarea y filtrar por sección actual
-                        bloques.forEach(b => {
-                            if (b.tarea.includes(seccionElegida)) {
-                                // Buscar futura tarea
-                                let tareasFuturas = empRows.filter(r => r.ordenGeneral > b.ultimoOrden && !r.tarea.includes(seccionElegida) && r.tarea !== "");
-                                
-                                let sigStr = "FIN TURNO";
-                                if (tareasFuturas.length > 0) {
-                                    let rawSig = tareasFuturas[0].tarea;
-                                    sigStr = ABREVIACIONES[rawSig] || rawSig;
-                                }
-
-                                dfFiltradoFinal.push({
-                                    nombre: b.nombre,
-                                    horaTurno: b.horaTurno, // Guardamos la hora exacta como ID de grupo
-                                    fin: b.fin,
-                                    sig: sigStr
-                                });
-                            }
-                        });
-                    }
-                }
-
-                if (dfFiltradoFinal.length === 0) {
-                    alert(`No se encontró a nadie en la sección:\n${seccionElegida}`);
-                    restaurarBoton();
-                    return;
-                }
-
-                // 6. Agrupar por hora de turno exacta (ej: "06:30", "07:00")
-                let turnos = {};
-                dfFiltradoFinal.forEach(r => {
-                    let h = r.horaTurno;
-                    if (!turnos[h]) turnos[h] = [];
-                    turnos[h].push(r);
-                });
-
-                // Ordenar las horas (las claves del diccionario) cronológicamente calculando los minutos reales
-                let horasOrdenadas = Object.keys(turnos).sort((a, b) => {
-                    return calcularMinutosLogicos(a) - calcularMinutosLogicos(b);
-                });
-
-                // 7. Dibujar los resultados
-                horasOrdenadas.forEach(hora => {
-                    let listaDatos = turnos[hora];
-                    
-                    // Ordenar por hora fin, luego por siguiente tarea, luego nombre
-                    listaDatos.sort((a, b) => {
-                        let finA = calcularMinutosLogicos(a.fin);
-                        let finB = calcularMinutosLogicos(b.fin);
-                        if (finA !== finB) return finA - finB;
-                        if (a.sig !== b.sig) return a.sig.localeCompare(b.sig);
-                        return a.nombre.localeCompare(b.nombre);
-                    });
-
-                    // Construir HTML del bloque
-                    let divBloque = document.createElement('div');
-                    divBloque.className = 'bloque-hora';
-                    
-                    let sigHtml = '';
-                    listaDatos.forEach(d => {
-                        let textoSig = d.sig !== "FIN TURNO" ? `➔ Sig: ${d.sig}` : "";
-                        sigHtml += `
-                            <tr>
-                                <td class="col-nombre">- ${d.nombre}</td>
-                                <td class="col-fin">Fin: ${d.fin}</td>
-                                <td class="col-sig">${textoSig}</td>
-                            </tr>
-                        `;
-                    });
-
-                    divBloque.innerHTML = `
-                        <div class="hora-titulo">${hora} H (${listaDatos.length} pers.)</div>
-                        <table>${sigHtml}</table>
-                    `;
-                    
-                    contenedor.appendChild(divBloque);
-                });
-
-                // Éxito
-                btnImprimir.disabled = false;
-                restaurarBoton();
-
+                renderizarPantalla(datosListos);
+                document.getElementById('btn-imprimir').disabled = false;
             } catch (err) {
                 console.error(err);
-                alert("Ocurrió un problema al leer el archivo:\n" + err.message);
-                restaurarBoton();
+                alert("Error al procesar: " + err.message);
+            } finally {
+                lblActivo.innerHTML = txtOriginal;
+                lblActivo.style.pointerEvents = 'auto';
+                e.target.value = ''; 
             }
         };
-
         reader.readAsArrayBuffer(file);
-        
-        // Limpiamos el input para permitir recargar el mismo archivo si se desea
-        e.target.value = '';
+    }
 
-        function restaurarBoton() {
-            lblCargar.innerHTML = "📁 Cargar Archivo Excel";
-            lblCargar.style.pointerEvents = 'auto';
+    function extraerDatos(rows, seccionElegida, turno) {
+        let df = rows.map(r => {
+            let horaInicio = formatTime(r['hora inicio']);
+            let horaFin = formatTime(r['hora fin']);
+            
+            let nombreBruto = String(r['nombre empleado']).trim().toUpperCase();
+            let partesNombre = nombreBruto.split(/\s+/);
+            if (partesNombre.length >= 3) partesNombre.pop(); 
+            let nombre = partesNombre.join(' '); 
+
+            let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
+            if (['NAN', 'NAT', 'NULL', 'NONE'].includes(tareaRaw)) tareaRaw = "";
+
+            return {
+                nombre: nombre,
+                horaInicio: horaInicio,
+                horaFin: horaFin,
+                tarea: tareaRaw,
+                minutosOrden: calcularMinutosLogicos(horaInicio)
+            };
+        }).filter(r => r.nombre !== "" && r.horaInicio !== "" && r.horaFin !== "");
+
+        df.sort((a, b) => {
+            if (a.nombre < b.nombre) return -1;
+            if (a.nombre > b.nombre) return 1;
+            return a.minutosOrden - b.minutosOrden;
+        });
+
+        df.forEach((r, i) => r.ordenGeneral = i);
+
+        let empDataMap = {};
+        df.forEach(r => {
+            if (!empDataMap[r.nombre]) empDataMap[r.nombre] = [];
+            empDataMap[r.nombre].push(r);
+        });
+
+        let dfFiltradoFinal = [];
+        
+        let umbralTarde = calcularMinutosLogicos("14:00"); // 480
+        let umbralNoche = calcularMinutosLogicos("22:00"); // 960
+
+        for (let emp in empDataMap) {
+            let empRows = empDataMap[emp];
+            
+            for (let i = 1; i < empRows.length; i++) {
+                if (empRows[i].tarea === "") empRows[i].tarea = empRows[i-1].tarea;
+            }
+            for (let i = empRows.length - 2; i >= 0; i--) {
+                if (empRows[i].tarea === "") empRows[i].tarea = empRows[i+1].tarea;
+            }
+
+            if(empRows.length > 0 && empRows[0].tarea !== "") {
+                let bloques = [];
+                let bloqueActual = {
+                    nombre: emp,
+                    tarea: empRows[0].tarea,
+                    horaTurno: empRows[0].horaInicio,
+                    fin: empRows[0].horaFin,
+                    ultimoOrden: empRows[0].ordenGeneral
+                };
+
+                for (let i = 1; i < empRows.length; i++) {
+                    let fila = empRows[i];
+                    if (fila.tarea === "") continue;
+
+                    if (fila.tarea === bloqueActual.tarea) {
+                        bloqueActual.fin = fila.horaFin;
+                        bloqueActual.ultimoOrden = fila.ordenGeneral;
+                    } else {
+                        bloques.push(bloqueActual);
+                        bloqueActual = {
+                            nombre: emp,
+                            tarea: fila.tarea,
+                            horaTurno: fila.horaInicio,
+                            fin: fila.horaFin,
+                            ultimoOrden: fila.ordenGeneral
+                        };
+                    }
+                }
+                bloques.push(bloqueActual);
+
+                bloques.forEach(b => {
+                    if (b.tarea.includes(seccionElegida)) {
+                        let tareasFuturas = empRows.filter(r => r.ordenGeneral > b.ultimoOrden && !r.tarea.includes(seccionElegida) && r.tarea !== "");
+                        
+                        let sigStr = "FIN TURNO";
+                        if (tareasFuturas.length > 0) {
+                            let rawSig = tareasFuturas[0].tarea;
+                            sigStr = ABREVIACIONES[rawSig] || rawSig;
+                        }
+
+                        let minutosInicio = calcularMinutosLogicos(b.horaTurno);
+                        let minutosFin = calcularMinutosLogicos(b.fin);
+                        
+                        if (minutosFin === 0) minutosFin = 1440; 
+
+                        let finMostrar = b.fin;
+                        let horaTurnoMostrar = b.horaTurno;
+
+                        if (turno === 'manana') {
+                            if (minutosFin > umbralTarde) {
+                                finMostrar = "14:00"; 
+                            }
+                            dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
+                        
+                        } else if (turno === 'tarde') {
+                            if (minutosFin > umbralTarde) {
+                                if (minutosInicio < umbralTarde) horaTurnoMostrar = "14:00"; 
+                                if (minutosFin > umbralNoche) finMostrar = "22:00"; 
+                                
+                                dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
+                            }
+                        
+                        } else if (turno === 'noche') {
+                            if (minutosFin > umbralNoche) {
+                                if (minutosInicio < umbralNoche) horaTurnoMostrar = "22:00"; 
+                                
+                                dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
+                            }
+                        }
+                    }
+                });
+            }
         }
-    });
+        return dfFiltradoFinal;
+    }
+
+    function renderizarPantalla(datosParaPintar) {
+        const contenedor = document.getElementById('contenedor-horarios');
+        contenedor.innerHTML = "";
+
+        if (datosParaPintar.length === 0) {
+            // Un mensaje más suave, a veces simplemente no hay nadie en esa sección en ese turno
+            contenedor.innerHTML = "<p style='text-align: center; color: #666; width: 100%; font-size: 18px;'>No hay nadie asignado a esta sección en este turno.</p>";
+            return;
+        }
+
+        let turnos = {};
+        datosParaPintar.forEach(r => {
+            let h = r.horaTurno;
+            if (!turnos[h]) turnos[h] = [];
+            turnos[h].push(r);
+        });
+
+        let horasOrdenadas = Object.keys(turnos).sort((a, b) => {
+            return calcularMinutosLogicos(a) - calcularMinutosLogicos(b);
+        });
+
+        horasOrdenadas.forEach(hora => {
+            let listaDatos = turnos[hora];
+            
+            listaDatos.sort((a, b) => {
+                let finA = calcularMinutosLogicos(a.fin);
+                if (finA === 0) finA = 1440; 
+                let finB = calcularMinutosLogicos(b.fin);
+                if (finB === 0) finB = 1440;
+
+                if (finA !== finB) return finA - finB;
+                if (a.sig !== b.sig) return a.sig.localeCompare(b.sig);
+                return a.nombre.localeCompare(b.nombre);
+            });
+
+            let divBloque = document.createElement('div');
+            divBloque.className = 'bloque-hora';
+            
+            let sigHtml = '';
+            listaDatos.forEach(d => {
+                let textoSig = d.sig !== "FIN TURNO" ? `➔ Sig: ${d.sig}` : "";
+
+                sigHtml += `
+                    <tr>
+                        <td class="col-nombre">- ${d.nombre}</td>
+                        <td class="col-fin">Fin: ${d.fin}</td>
+                        <td class="col-sig">${textoSig}</td>
+                    </tr>
+                `;
+            });
+
+            divBloque.innerHTML = `
+                <div class="hora-titulo">${hora} H (${listaDatos.length} pers.)</div>
+                <table>${sigHtml}</table>
+            `;
+            
+            contenedor.appendChild(divBloque);
+        });
+    }
 </script>
 
 </body>
