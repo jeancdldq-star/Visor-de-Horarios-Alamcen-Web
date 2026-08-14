@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor Diario de Turnos MD - 3 Turnos (Con Memoria)</title>
+    <title>Visor Diario de Turnos MD - V.3</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
@@ -24,6 +24,17 @@
             min-height: 85vh;
         }
         h1 { text-align: center; color: #333; margin-bottom: 5px; }
+        
+        /* --- NUEVO: ESTILO PARA LA INFO DEL ARCHIVO --- */
+        .info-archivo {
+            text-align: center;
+            color: #888;
+            font-size: 13px;
+            margin-top: 0px;
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+
         .instrucciones { text-align: center; color: #666; font-size: 16px; margin-bottom: 25px; }
 
         /* --- CONTROLES --- */
@@ -131,6 +142,10 @@
 <div class="app-container">
     <div class="no-print">
         <h1>Visor Diario de Turnos</h1>
+        
+        <!-- Contenedor para mostrar sutilmente la fecha y el nombre del archivo -->
+        <div id="info-archivo" class="info-archivo"></div>
+        
         <div class="instrucciones">Elige el planificador según tu turno y sección</div>
 
         <div class="controles">
@@ -168,8 +183,8 @@
 
 <script>
     // --- VARIABLES GLOBALES PARA LA MEMORIA ---
-    let datosExcelCrudos = []; // Guarda el Excel en bruto
-    let turnoActualElegido = ""; // Recuerda qué botón pulsaste (mañana, tarde o noche)
+    let datosExcelCrudos = []; 
+    let turnoActualElegido = ""; 
 
     const ABREVIACIONES = {
         "CARRUSEL PC ALM.": "CONF",
@@ -203,8 +218,6 @@
         return hLogica * 60 + m; 
     }
 
-    // --- MAGIA APLICADA AQUÍ ---
-    // Cuando cambias el desplegable, si hay datos en memoria, recalcula y pinta al instante
     document.getElementById('combo-seccion').addEventListener('change', () => {
         if (datosExcelCrudos.length > 0 && turnoActualElegido !== "") {
             const nuevaSeccion = document.getElementById('combo-seccion').value.trim().toUpperCase();
@@ -223,6 +236,10 @@
     function manejarArchivo(e, turno) {
         const file = e.target.files[0];
         if (!file) return;
+
+        // Extraer la fecha y mostrar la información del archivo sutilmente
+        const fechaHoy = new Date().toLocaleDateString('es-ES');
+        document.getElementById('info-archivo').innerHTML = `📅 Fecha: <strong>${fechaHoy}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; 📁 Archivo: <strong>${file.name}</strong>`;
 
         const seccionElegida = document.getElementById('combo-seccion').value.trim().toUpperCase();
         const lblActivo = document.getElementById('lbl-' + turno);
@@ -249,7 +266,6 @@
                     throw new Error("Faltan columnas requeridas en el Excel.");
                 }
 
-                // Guardamos en memoria global por si cambian el desplegable después
                 datosExcelCrudos = rows;
                 turnoActualElegido = turno;
 
@@ -260,6 +276,7 @@
             } catch (err) {
                 console.error(err);
                 alert("Error al procesar: " + err.message);
+                document.getElementById('info-archivo').innerHTML = ""; // Limpiar si hay error
             } finally {
                 lblActivo.innerHTML = txtOriginal;
                 lblActivo.style.pointerEvents = 'auto';
@@ -307,8 +324,8 @@
 
         let dfFiltradoFinal = [];
         
-        let umbralTarde = calcularMinutosLogicos("14:00"); // 480
-        let umbralNoche = calcularMinutosLogicos("22:00"); // 960
+        let umbralTarde = calcularMinutosLogicos("14:00");  
+        let umbralNoche = calcularMinutosLogicos("22:00");  
 
         for (let emp in empDataMap) {
             let empRows = empDataMap[emp];
@@ -334,7 +351,11 @@
                     let fila = empRows[i];
                     if (fila.tarea === "") continue;
 
-                    if (fila.tarea === bloqueActual.tarea) {
+                    let minInicioFila = calcularMinutosLogicos(fila.horaInicio);
+                    let minFinAnterior = calcularMinutosLogicos(bloqueActual.fin);
+                    let saltoTiempo = minInicioFila - minFinAnterior;
+
+                    if (fila.tarea === bloqueActual.tarea && saltoTiempo < 30) {
                         bloqueActual.fin = fila.horaFin;
                         bloqueActual.ultimoOrden = fila.ordenGeneral;
                     } else {
@@ -356,8 +377,18 @@
                         
                         let sigStr = "FIN TURNO";
                         if (tareasFuturas.length > 0) {
-                            let rawSig = tareasFuturas[0].tarea;
+                            let futura = tareasFuturas[0];
+                            let rawSig = futura.tarea;
                             sigStr = ABREVIACIONES[rawSig] || rawSig;
+
+                            let minInicioFutura = calcularMinutosLogicos(futura.horaInicio);
+                            let minFinActual = calcularMinutosLogicos(b.fin);
+
+                            if (turno === 'manana' && minFinActual < umbralTarde && minInicioFutura >= umbralTarde) {
+                                sigStr = "FIN TURNO";
+                            } else if (turno === 'tarde' && minFinActual < umbralNoche && minInicioFutura >= umbralNoche) {
+                                sigStr = "FIN TURNO";
+                            }
                         }
 
                         let minutosInicio = calcularMinutosLogicos(b.horaTurno);
@@ -369,10 +400,12 @@
                         let horaTurnoMostrar = b.horaTurno;
 
                         if (turno === 'manana') {
-                            if (minutosFin > umbralTarde) {
-                                finMostrar = "14:00"; 
+                            if (minutosInicio < umbralTarde) {
+                                if (minutosFin > umbralTarde) {
+                                    finMostrar = "14:00"; 
+                                }
+                                dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
                             }
-                            dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
                         
                         } else if (turno === 'tarde') {
                             if (minutosFin > umbralTarde) {
@@ -401,7 +434,6 @@
         contenedor.innerHTML = "";
 
         if (datosParaPintar.length === 0) {
-            // Un mensaje más suave, a veces simplemente no hay nadie en esa sección en ese turno
             contenedor.innerHTML = "<p style='text-align: center; color: #666; width: 100%; font-size: 18px;'>No hay nadie asignado a esta sección en este turno.</p>";
             return;
         }
