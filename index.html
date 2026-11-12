@@ -700,14 +700,14 @@
 
         if (salidas.length > 0) {
             html += `
-                <p class="resumen-titulo">📢 Salidas hacia otra sección</p>
-                <p class="resumen-subtitulo">Personas que salen a la misma hora hacia la misma sección, para avisarlas de una sola vez.</p>
+                <p class="resumen-titulo">Salidas hacia otra sección</p>
+                <p class="resumen-subtitulo">Personas que salen a la misma hora hacia la misma sección.</p>
                 <div class="resumen-grid">${pintarAvisos(salidas, '')}</div>
             `;
         }
         if (llegadas.length > 0) {
             html += `
-                <p class="resumen-titulo">📥 Llegadas desde otra sección</p>
+                <p class="resumen-titulo">Llegadas desde otra sección</p>
                 <p class="resumen-subtitulo">Personas que llegan a esta sección a la misma hora desde la misma sección.</p>
                 <div class="resumen-grid">${pintarAvisos(llegadas, 'aviso-entrada')}</div>
             `;
