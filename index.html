@@ -280,7 +280,7 @@
     // Palabras que nunca deben quedar sueltas al final de un nombre recortado
     const PARTICULAS = ["DE", "DEL", "LA", "LAS", "LOS", "EL", "Y", "I", "DA", "DAS", "DO", "DOS", "DI", "VAN", "VON", "BEN", "SAN", "SANTA"];
 
-    // Hueco máximo (minutos) para considerar que dos tareas van seguidas (cubre los descansos)
+    // Hueco máximo (minutos) para considerar que dos tareas van seguidas
     const HUECO_MAXIMO = 30;
 
     const comboSeccion = document.getElementById('combo-seccion');
@@ -449,15 +449,11 @@
             let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
             if (['NAN', 'NAT', 'NULL', 'NONE'].includes(tareaRaw)) tareaRaw = "";
 
-            let nombreTarea = r['nombre tarea'] ? String(r['nombre tarea']).trim().toUpperCase() : "";
-
             return {
                 nombreCompleto: nombreCompleto,
                 horaInicio: horaInicio,
                 horaFin: horaFin,
                 tarea: tareaRaw,
-                // El descanso no pertenece a ninguna sección: no se rellena con la anterior
-                esDescanso: tareaRaw === "" && nombreTarea.includes("DESCANSO"),
                 minutosOrden: calcularMinutosLogicos(horaInicio)
             };
         }).filter(r => r.nombreCompleto !== "" && r.horaInicio !== "" && r.horaFin !== "");
@@ -487,10 +483,10 @@
 
         for (let emp in empDataMap) {
             let empRows = empDataMap[emp].sort((a, b) => a.minutosOrden - b.minutosOrden);
-            let trabajo = empRows.filter(r => !r.esDescanso);
-            let descansos = empRows.filter(r => r.esDescanso);
+            let trabajo = empRows;
 
-            // Filas de trabajo sin sección: heredan la de la fila vecina
+            // Filas sin sección (como el descanso): heredan la de la fila anterior,
+            // porque el descanso se hace en la sección en la que se estaba
             for (let i = 1; i < trabajo.length; i++) {
                 if (trabajo[i].tarea === "") trabajo[i].tarea = trabajo[i-1].tarea;
             }
@@ -500,7 +496,7 @@
             trabajo = trabajo.filter(r => r.tarea !== "");
             if (trabajo.length === 0) continue;
 
-            // Bloques: tramos seguidos en la misma sección (un descanso en medio no los parte)
+            // Bloques: tramos seguidos en la misma sección
             let bloques = [];
             trabajo.forEach(fila => {
                 let ultimo = bloques[bloques.length - 1];
@@ -518,9 +514,6 @@
                     });
                 }
             });
-
-            const hayDescansoEntre = (desde, hasta) =>
-                descansos.some(d => d.minutosOrden >= desde && d.minutosOrden < hasta);
 
             bloques.forEach((b, idx) => {
                 if (!b.tarea.includes(seccionElegida)) return;
@@ -549,7 +542,6 @@
                 // --- Salida: a qué sección va después ---
                 let sig = "FIN TURNO";
                 let sigHora = "";       // hora a la que empieza en la siguiente sección, si no es inmediata
-                let trasDescanso = false;
 
                 if (siguiente && !siguiente.tarea.includes(seccionElegida) && !finRecortado) {
                     let hueco = siguiente.minInicio - b.minFin;
@@ -559,20 +551,15 @@
 
                     if (!cruzaTurno) {
                         sig = ABREVIACIONES[siguiente.tarea] || siguiente.tarea;
-                        if (hueco > 0) {
-                            sigHora = siguiente.inicio;
-                            trasDescanso = hayDescansoEntre(b.minFin, siguiente.minInicio);
-                        }
+                        if (hueco > 0) sigHora = siguiente.inicio;
                     }
                 }
 
                 // --- Llegada: de qué sección viene ---
                 let desde = "";
-                let trasDescansoLlegada = false;
                 if (anterior && !anterior.tarea.includes(seccionElegida) && !inicioRecortado
                     && b.minInicio - anterior.minFin <= HUECO_MAXIMO) {
                     desde = ABREVIACIONES[anterior.tarea] || anterior.tarea;
-                    trasDescansoLlegada = hayDescansoEntre(anterior.minFin, b.minInicio);
                 }
 
                 resultado.push({
@@ -581,9 +568,7 @@
                     fin: finMostrar,
                     sig: sig,
                     sigHora: sigHora,
-                    trasDescanso: trasDescanso,
-                    desde: desde,
-                    trasDescansoLlegada: trasDescansoLlegada
+                    desde: desde
                 });
             });
         }
@@ -689,14 +674,9 @@
 
         let salidas = agrupar(datos, d => {
             if (d.sig === "FIN TURNO") return null;
-            let nota = "";
-            if (d.sigHora) {
-                nota = d.trasDescanso
-                    ? `Descanso y, a las ${d.sigHora}, a ${d.sig}`
-                    : `Empiezan en ${d.sig} a las ${d.sigHora}`;
-            }
+            let nota = d.sigHora ? `Empiezan en ${d.sig} a las ${d.sigHora}` : "";
             return {
-                clave: `${d.fin}|${d.sig}|${d.sigHora}|${d.trasDescanso}`,
+                clave: `${d.fin}|${d.sig}|${d.sigHora}`,
                 orden: minutosDeFin(d.fin),
                 titulo: `A las ${d.fin} H ➔ ${d.sig}`,
                 nota: nota
@@ -706,10 +686,10 @@
         let llegadas = agrupar(datos, d => {
             if (!d.desde) return null;
             return {
-                clave: `${d.horaTurno}|${d.desde}|${d.trasDescansoLlegada}`,
+                clave: `${d.horaTurno}|${d.desde}`,
                 orden: calcularMinutosLogicos(d.horaTurno),
                 titulo: `A las ${d.horaTurno} H ⬅ desde ${d.desde}`,
-                nota: d.trasDescansoLlegada ? "Llegan después del descanso" : ""
+                nota: ""
             };
         });
 
