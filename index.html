@@ -4,7 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visor Diario de Turnos MD - V.3</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Librería incluida en el repositorio para funcionar sin internet; el CDN queda solo como respaldo -->
+    <script src="xlsx.full.min.js"></script>
+    <script>
+        if (typeof XLSX === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');
+        }
+    </script>
     <style>
         /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
         body {
@@ -75,12 +81,22 @@
         .btn:disabled { background: #aaa !important; cursor: not-allowed; }
         
         /* Botones independientes para los 3 turnos */
-        .btn-manana { background-color: #4CAF50; }
-        .btn-tarde { background-color: #f39c12; }
-        .btn-noche { background-color: #5e35b1; }
+        .btn-cargar { background-color: #4CAF50; }
         .btn-imprimir { background-color: #2196F3; }
         
         input[type="file"] { display: none; }
+
+        /* --- CABECERA QUE SÍ SE IMPRIME (sección, turno y fecha) --- */
+        .cabecera-impresa {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            font-size: 15px;
+            font-weight: bold;
+            color: black;
+            border-bottom: 2px solid black;
+            padding: 0 0 6px 0;
+            margin: 0 0 15px 0;
+        }
+        .cabecera-impresa:empty { display: none; }
 
         /* --- VISTA DE HORARIOS --- */
         #contenedor-horarios {
@@ -123,8 +139,8 @@
         tr:last-child td { border-bottom: none; }
         
         .col-nombre { width: 40%; }
-        .col-fin { width: 12%; font-weight: bold; }
-        .col-sig { width: 22%; font-weight: bold; }
+        .col-fin { width: 12%; font-weight: bold; white-space: nowrap; }
+        .col-sig { width: 22%; font-weight: bold; white-space: nowrap; }
 
         /* --- RESUMEN DE MOVIMIENTOS (ÚLTIMA HOJA) --- */
         #contenedor-resumen {
@@ -140,6 +156,14 @@
             margin: 0 0 4px 0;
         }
         .resumen-subtitulo { font-size: 12px; color: #666; margin: 0 0 15px 0; }
+        .resumen-grid + .resumen-titulo { margin-top: 25px; }
+        .aviso-nota {
+            font-size: 11px;
+            font-weight: bold;
+            color: black;
+            padding: 4px 10px 0 10px;
+        }
+        .aviso-entrada .aviso-cabecera { background-color: #BFE6FF !important; }
         .resumen-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
@@ -185,7 +209,11 @@
             body { background: white; padding: 0; }
             .app-container { box-shadow: none; padding: 0; width: 100%; max-width: 100%; }
             #contenedor-horarios { display: flex; flex-wrap: wrap; gap: 15px; }
-            .bloque-hora { width: 30%; font-size: 12px; }
+            .bloque-hora { width: 30%; font-size: 12px; padding: 0 10px; }
+            /* Filas más compactas para que un bloque grande quepa en la primera hoja junto a la cabecera */
+            .bloque-hora td { padding: 2px 2px; font-size: 11px; }
+            .bloque-hora table { margin-top: 6px; }
+            .cabecera-impresa { font-size: 13px; padding-bottom: 3px; margin-bottom: 8px; }
             /* El resumen siempre empieza en una hoja nueva: la última */
             #contenedor-resumen { break-before: page; page-break-before: always; border-top: none; margin-top: 0; padding-top: 0; }
             .resumen-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding-right: 2px; }
@@ -197,14 +225,14 @@
 <div class="app-container">
     <div class="no-print">
         <h1>Visor Diario de Turnos</h1>
-        
-        <!-- Contenedor para mostrar sutilmente la fecha y el nombre del archivo -->
+
+        <!-- Fecha del planificador y nombre del archivo cargado -->
         <div id="info-archivo" class="info-archivo"></div>
-        
-        <div class="instrucciones">Elige el planificador según tu turno y sección</div>
+
+        <div class="instrucciones">Carga el planificador y elige tu sección y tu turno</div>
 
         <div class="controles">
-            <label style="font-weight: bold;">Filtrar por:</label>
+            <label for="combo-seccion" style="font-weight: bold;">Sección:</label>
             <select id="combo-seccion">
                 <option value="CARRUSEL PK ALM.">CARRUSEL PK ALM.</option>
                 <option value="CARRUSEL PC ALM.">CARRUSEL PC ALM.</option>
@@ -212,20 +240,17 @@
                 <option value="EXPEDICIONES ALM.">EXPEDICIONES ALM.</option>
             </select>
 
-            <label for="archivo-manana" class="btn btn-manana" id="lbl-manana">
-                ☀️ Planificador Mañana
-            </label>
-            <input type="file" id="archivo-manana" accept=".xlsx, .xls">
+            <label for="combo-turno" style="font-weight: bold;">Turno:</label>
+            <select id="combo-turno" style="width: 150px;">
+                <option value="manana">☀️ Mañana</option>
+                <option value="tarde">⛅ Tarde</option>
+                <option value="noche">🌙 Noche</option>
+            </select>
 
-            <label for="archivo-tarde" class="btn btn-tarde" id="lbl-tarde">
-                ⛅ Planificador Tarde
+            <label for="archivo-planificador" class="btn btn-cargar" id="lbl-cargar">
+                📂 Cargar planificador
             </label>
-            <input type="file" id="archivo-tarde" accept=".xlsx, .xls">
-            
-            <label for="archivo-noche" class="btn btn-noche" id="lbl-noche">
-                🌙 Planificador Noche
-            </label>
-            <input type="file" id="archivo-noche" accept=".xlsx, .xls">
+            <input type="file" id="archivo-planificador" accept=".xlsx, .xls">
 
             <button class="btn btn-imprimir" id="btn-imprimir" disabled onclick="window.print()">
                 🖨️ Imprimir
@@ -233,14 +258,15 @@
         </div>
     </div>
 
+    <div id="cabecera-impresa" class="cabecera-impresa"></div>
     <div id="contenedor-horarios"></div>
     <div id="contenedor-resumen"></div>
 </div>
 
 <script>
     // --- VARIABLES GLOBALES PARA LA MEMORIA ---
-    let datosExcelCrudos = []; 
-    let turnoActualElegido = ""; 
+    let datosExcelCrudos = [];
+    let fechaPlanificador = "";
 
     const ABREVIACIONES = {
         "CARRUSEL PC ALM.": "CONF",
@@ -248,6 +274,21 @@
         "EXPEDICIONES ALM.": "EXP",
         "DEVOLUCIONES ALM.": "DEVO"
     };
+
+    const NOMBRES_TURNO = { manana: "Turno de mañana", tarde: "Turno de tarde", noche: "Turno de noche" };
+
+    // Palabras que nunca deben quedar sueltas al final de un nombre recortado
+    const PARTICULAS = ["DE", "DEL", "LA", "LAS", "LOS", "EL", "Y", "I", "DA", "DAS", "DO", "DOS", "DI", "VAN", "VON", "BEN", "SAN", "SANTA"];
+
+    // Hueco máximo (minutos) para considerar que dos tareas van seguidas (cubre los descansos)
+    const HUECO_MAXIMO = 30;
+
+    const comboSeccion = document.getElementById('combo-seccion');
+    const comboTurno = document.getElementById('combo-turno');
+
+    function escaparHtml(texto) {
+        return String(texto).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
 
     function formatTime(val) {
         if (val === undefined || val === null || val === "") return "";
@@ -264,80 +305,136 @@
         return s;
     }
 
+    // Minutos desde las 06:00 (inicio lógico del día de trabajo)
     function calcularMinutosLogicos(horaStr) {
         if (!horaStr) return 9999;
         let partes = horaStr.split(':');
         if (partes.length < 2) return 9999;
         let h = parseInt(partes[0]);
         let m = parseInt(partes[1]);
-        let hLogica = (h - 6 + 24) % 24; 
-        return hLogica * 60 + m; 
+        let hLogica = (h - 6 + 24) % 24;
+        return hLogica * 60 + m;
     }
 
-    document.getElementById('combo-seccion').addEventListener('change', () => {
-        if (datosExcelCrudos.length > 0 && turnoActualElegido !== "") {
-            const nuevaSeccion = document.getElementById('combo-seccion').value.trim().toUpperCase();
-            let datosListos = extraerDatos(datosExcelCrudos, nuevaSeccion, turnoActualElegido);
-            renderizarPantalla(datosListos);
+    // Igual, pero para horas de fin: las 06:00 son el final del día, no el principio
+    function minutosDeFin(horaStr) {
+        let m = calcularMinutosLogicos(horaStr);
+        return m === 0 ? 1440 : m;
+    }
+
+    // Lee la fecha real del planificador (columna FECHA) en vez de usar la de hoy
+    function extraerFecha(rows) {
+        let fila = rows.find(r => r['fecha'] !== undefined && r['fecha'] !== "");
+        if (!fila) return "";
+        let val = fila['fecha'];
+        let y, m, d;
+        if (typeof val === 'number') {
+            let f = XLSX.SSF.parse_date_code(val);
+            if (!f) return "";
+            y = f.y; m = f.m; d = f.d;
         } else {
-            document.getElementById('contenedor-horarios').innerHTML = "";
-            document.getElementById('contenedor-resumen').innerHTML = "";
-            document.getElementById('btn-imprimir').disabled = true;
+            let s = String(val).trim();
+            let iso = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+            let es = s.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+            if (iso) { y = +iso[1]; m = +iso[2]; d = +iso[3]; }
+            else if (es) { d = +es[1]; m = +es[2]; y = +es[3]; }
+            else return "";
         }
-    });
+        let fecha = new Date(y, m - 1, d);
+        if (isNaN(fecha.getTime())) return "";
+        let dia = fecha.toLocaleDateString('es-ES', { weekday: 'long' });
+        let num = fecha.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        return `${dia} ${num}`;
+    }
 
-    document.getElementById('archivo-manana').addEventListener('change', (e) => manejarArchivo(e, 'manana'));
-    document.getElementById('archivo-tarde').addEventListener('change', (e) => manejarArchivo(e, 'tarde'));
-    document.getElementById('archivo-noche').addEventListener('change', (e) => manejarArchivo(e, 'noche'));
+    // Nombre corto: se quita el segundo apellido, sin dejar partículas sueltas ("EL", "DEL"...)
+    function acortarNombre(nombreCompleto) {
+        let partes = nombreCompleto.split(/\s+/);
+        if (partes.length >= 3) {
+            partes.pop();
+            while (partes.length > 2 && PARTICULAS.includes(partes[partes.length - 1])) partes.pop();
+        }
+        return partes.join(' ');
+    }
 
-    function manejarArchivo(e, turno) {
+    // --- MEMORIA DE LA ÚLTIMA SECCIÓN Y TURNO ELEGIDOS ---
+    try {
+        let s = localStorage.getItem('visor-seccion');
+        let t = localStorage.getItem('visor-turno');
+        if (s && [...comboSeccion.options].some(o => o.value === s)) comboSeccion.value = s;
+        if (t && NOMBRES_TURNO[t]) comboTurno.value = t;
+    } catch (e) { /* sin almacenamiento: se usan los valores por defecto */ }
+
+    function actualizarVista() {
+        try {
+            localStorage.setItem('visor-seccion', comboSeccion.value);
+            localStorage.setItem('visor-turno', comboTurno.value);
+        } catch (e) { /* no es imprescindible */ }
+
+        if (datosExcelCrudos.length === 0) return;
+
+        const seccion = comboSeccion.value.trim().toUpperCase();
+        const turno = comboTurno.value;
+        const datos = extraerDatos(datosExcelCrudos, seccion, turno);
+
+        let partesCabecera = [comboSeccion.value, NOMBRES_TURNO[turno]];
+        if (fechaPlanificador) partesCabecera.push(fechaPlanificador);
+        document.getElementById('cabecera-impresa').textContent = partesCabecera.join('  ·  ');
+
+        renderizarPantalla(datos);
+        renderizarResumen(datos);
+    }
+
+    comboSeccion.addEventListener('change', actualizarVista);
+    comboTurno.addEventListener('change', actualizarVista);
+    document.getElementById('archivo-planificador').addEventListener('change', manejarArchivo);
+
+    function manejarArchivo(e) {
         const file = e.target.files[0];
         if (!file) return;
 
-        // Extraer la fecha y mostrar la información del archivo sutilmente
-        const fechaHoy = new Date().toLocaleDateString('es-ES');
-        document.getElementById('info-archivo').innerHTML = `📅 Fecha: <strong>${fechaHoy}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; 📁 Archivo: <strong>${file.name}</strong>`;
-
-        const seccionElegida = document.getElementById('combo-seccion').value.trim().toUpperCase();
-        const lblActivo = document.getElementById('lbl-' + turno);
-        const txtOriginal = lblActivo.innerHTML;
-
-        lblActivo.innerHTML = "⏳ Procesando...";
-        lblActivo.style.pointerEvents = 'none';
+        const lbl = document.getElementById('lbl-cargar');
+        const txtOriginal = lbl.innerHTML;
+        lbl.innerHTML = "⏳ Procesando...";
+        lbl.style.pointerEvents = 'none';
 
         const reader = new FileReader();
         reader.onload = function(evento) {
             try {
+                if (typeof XLSX === 'undefined') {
+                    throw new Error("No se ha podido cargar la librería de Excel (xlsx.full.min.js debe estar junto a index.html).");
+                }
                 const data = new Uint8Array(evento.target.result);
                 const workbook = XLSX.read(data, {type: 'array', cellDates: false});
                 const worksheet = workbook.Sheets[workbook.SheetNames[0]];
                 const rawRows = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
-                
+
                 const rows = rawRows.map(row => {
                     let newRow = {};
                     for (let key in row) newRow[key.trim().toLowerCase()] = row[key];
                     return newRow;
                 });
 
-                if (!rows[0].hasOwnProperty('nombre empleado') || !rows[0].hasOwnProperty('hora inicio') || !rows[0].hasOwnProperty('hora fin')) {
+                if (rows.length === 0 || !rows[0].hasOwnProperty('nombre empleado') || !rows[0].hasOwnProperty('hora inicio') || !rows[0].hasOwnProperty('hora fin')) {
                     throw new Error("Faltan columnas requeridas en el Excel.");
                 }
 
                 datosExcelCrudos = rows;
-                turnoActualElegido = turno;
+                fechaPlanificador = extraerFecha(rows);
 
-                let datosListos = extraerDatos(datosExcelCrudos, seccionElegida, turnoActualElegido);
+                const textoFecha = fechaPlanificador ? escaparHtml(fechaPlanificador) : "no indicada en el archivo";
+                document.getElementById('info-archivo').innerHTML =
+                    `📅 Fecha del planificador: <strong>${textoFecha}</strong> &nbsp;&nbsp;|&nbsp;&nbsp; 📁 Archivo: <strong>${escaparHtml(file.name)}</strong>`;
 
-                renderizarPantalla(datosListos);
+                actualizarVista();
                 document.getElementById('btn-imprimir').disabled = false;
             } catch (err) {
                 console.error(err);
                 alert("Error al procesar: " + err.message);
-                document.getElementById('info-archivo').innerHTML = ""; // Limpiar si hay error
             } finally {
-                lblActivo.innerHTML = txtOriginal;
-                lblActivo.style.pointerEvents = 'auto';
-                e.target.value = ''; 
+                lbl.innerHTML = txtOriginal;
+                lbl.style.pointerEvents = 'auto';
+                e.target.value = '';
             }
         };
         reader.readAsArrayBuffer(file);
@@ -347,149 +444,155 @@
         let df = rows.map(r => {
             let horaInicio = formatTime(r['hora inicio']);
             let horaFin = formatTime(r['hora fin']);
-            
-            let nombreBruto = String(r['nombre empleado']).trim().toUpperCase();
-            let partesNombre = nombreBruto.split(/\s+/);
-            if (partesNombre.length >= 3) partesNombre.pop(); 
-            let nombre = partesNombre.join(' '); 
+            let nombreCompleto = String(r['nombre empleado']).trim().toUpperCase().replace(/\s+/g, ' ');
 
             let tareaRaw = r['sección tarea'] ? String(r['sección tarea']).trim().toUpperCase() : "";
             if (['NAN', 'NAT', 'NULL', 'NONE'].includes(tareaRaw)) tareaRaw = "";
 
+            let nombreTarea = r['nombre tarea'] ? String(r['nombre tarea']).trim().toUpperCase() : "";
+
             return {
-                nombre: nombre,
+                nombreCompleto: nombreCompleto,
                 horaInicio: horaInicio,
                 horaFin: horaFin,
                 tarea: tareaRaw,
+                // El descanso no pertenece a ninguna sección: no se rellena con la anterior
+                esDescanso: tareaRaw === "" && nombreTarea.includes("DESCANSO"),
                 minutosOrden: calcularMinutosLogicos(horaInicio)
             };
-        }).filter(r => r.nombre !== "" && r.horaInicio !== "" && r.horaFin !== "");
+        }).filter(r => r.nombreCompleto !== "" && r.horaInicio !== "" && r.horaFin !== "");
 
-        df.sort((a, b) => {
-            if (a.nombre < b.nombre) return -1;
-            if (a.nombre > b.nombre) return 1;
-            return a.minutosOrden - b.minutosOrden;
-        });
-
-        df.forEach((r, i) => r.ordenGeneral = i);
-
+        // Se agrupa por nombre completo para no mezclar a dos personas con el mismo nombre corto
         let empDataMap = {};
         df.forEach(r => {
-            if (!empDataMap[r.nombre]) empDataMap[r.nombre] = [];
-            empDataMap[r.nombre].push(r);
+            if (!empDataMap[r.nombreCompleto]) empDataMap[r.nombreCompleto] = [];
+            empDataMap[r.nombreCompleto].push(r);
         });
 
-        let dfFiltradoFinal = [];
-        
-        let umbralTarde = calcularMinutosLogicos("14:00");  
-        let umbralNoche = calcularMinutosLogicos("22:00");  
+        // Si dos personas comparten nombre corto, se muestran con el nombre completo
+        let vecesNombreCorto = {};
+        Object.keys(empDataMap).forEach(n => {
+            let corto = acortarNombre(n);
+            vecesNombreCorto[corto] = (vecesNombreCorto[corto] || 0) + 1;
+        });
+        const nombreAMostrar = (n) => {
+            let corto = acortarNombre(n);
+            return vecesNombreCorto[corto] > 1 ? n : corto;
+        };
+
+        let resultado = [];
+
+        const umbralTarde = calcularMinutosLogicos("14:00");
+        const umbralNoche = calcularMinutosLogicos("22:00");
 
         for (let emp in empDataMap) {
-            let empRows = empDataMap[emp];
-            
-            for (let i = 1; i < empRows.length; i++) {
-                if (empRows[i].tarea === "") empRows[i].tarea = empRows[i-1].tarea;
+            let empRows = empDataMap[emp].sort((a, b) => a.minutosOrden - b.minutosOrden);
+            let trabajo = empRows.filter(r => !r.esDescanso);
+            let descansos = empRows.filter(r => r.esDescanso);
+
+            // Filas de trabajo sin sección: heredan la de la fila vecina
+            for (let i = 1; i < trabajo.length; i++) {
+                if (trabajo[i].tarea === "") trabajo[i].tarea = trabajo[i-1].tarea;
             }
-            for (let i = empRows.length - 2; i >= 0; i--) {
-                if (empRows[i].tarea === "") empRows[i].tarea = empRows[i+1].tarea;
+            for (let i = trabajo.length - 2; i >= 0; i--) {
+                if (trabajo[i].tarea === "") trabajo[i].tarea = trabajo[i+1].tarea;
             }
+            trabajo = trabajo.filter(r => r.tarea !== "");
+            if (trabajo.length === 0) continue;
 
-            if(empRows.length > 0 && empRows[0].tarea !== "") {
-                let bloques = [];
-                let bloqueActual = {
-                    nombre: emp,
-                    tarea: empRows[0].tarea,
-                    horaTurno: empRows[0].horaInicio,
-                    fin: empRows[0].horaFin,
-                    ultimoOrden: empRows[0].ordenGeneral
-                };
+            // Bloques: tramos seguidos en la misma sección (un descanso en medio no los parte)
+            let bloques = [];
+            trabajo.forEach(fila => {
+                let ultimo = bloques[bloques.length - 1];
+                let minInicio = calcularMinutosLogicos(fila.horaInicio);
+                if (ultimo && fila.tarea === ultimo.tarea && minInicio - ultimo.minFin < HUECO_MAXIMO) {
+                    ultimo.fin = fila.horaFin;
+                    ultimo.minFin = minutosDeFin(fila.horaFin);
+                } else {
+                    bloques.push({
+                        tarea: fila.tarea,
+                        inicio: fila.horaInicio,
+                        fin: fila.horaFin,
+                        minInicio: minInicio,
+                        minFin: minutosDeFin(fila.horaFin)
+                    });
+                }
+            });
 
-                for (let i = 1; i < empRows.length; i++) {
-                    let fila = empRows[i];
-                    if (fila.tarea === "") continue;
+            const hayDescansoEntre = (desde, hasta) =>
+                descansos.some(d => d.minutosOrden >= desde && d.minutosOrden < hasta);
 
-                    let minInicioFila = calcularMinutosLogicos(fila.horaInicio);
-                    let minFinAnterior = calcularMinutosLogicos(bloqueActual.fin);
-                    let saltoTiempo = minInicioFila - minFinAnterior;
+            bloques.forEach((b, idx) => {
+                if (!b.tarea.includes(seccionElegida)) return;
 
-                    if (fila.tarea === bloqueActual.tarea && saltoTiempo < 30) {
-                        bloqueActual.fin = fila.horaFin;
-                        bloqueActual.ultimoOrden = fila.ordenGeneral;
-                    } else {
-                        bloques.push(bloqueActual);
-                        bloqueActual = {
-                            nombre: emp,
-                            tarea: fila.tarea,
-                            horaTurno: fila.horaInicio,
-                            fin: fila.horaFin,
-                            ultimoOrden: fila.ordenGeneral
-                        };
+                let anterior = bloques[idx - 1];
+                let siguiente = bloques[idx + 1];
+
+                // --- Inicio y fin a mostrar, recortados a los límites del turno ---
+                let horaTurnoMostrar = b.inicio;
+                let finMostrar = b.fin;
+                let inicioRecortado = false;
+                let finRecortado = false;
+
+                if (turno === 'manana') {
+                    if (b.minInicio >= umbralTarde) return;
+                    if (b.minFin > umbralTarde) { finMostrar = "14:00"; finRecortado = true; }
+                } else if (turno === 'tarde') {
+                    if (b.minFin <= umbralTarde || b.minInicio >= umbralNoche) return;
+                    if (b.minInicio < umbralTarde) { horaTurnoMostrar = "14:00"; inicioRecortado = true; }
+                    if (b.minFin > umbralNoche) { finMostrar = "22:00"; finRecortado = true; }
+                } else if (turno === 'noche') {
+                    if (b.minFin <= umbralNoche) return;
+                    if (b.minInicio < umbralNoche) { horaTurnoMostrar = "22:00"; inicioRecortado = true; }
+                }
+
+                // --- Salida: a qué sección va después ---
+                let sig = "FIN TURNO";
+                let sigHora = "";       // hora a la que empieza en la siguiente sección, si no es inmediata
+                let trasDescanso = false;
+
+                if (siguiente && !siguiente.tarea.includes(seccionElegida) && !finRecortado) {
+                    let hueco = siguiente.minInicio - b.minFin;
+                    let limiteTurno = turno === 'manana' ? umbralTarde : (turno === 'tarde' ? umbralNoche : Infinity);
+                    // Si lo siguiente empieza ya en otro turno y tras un hueco largo, aquí acaba su jornada
+                    let cruzaTurno = b.minFin < limiteTurno && siguiente.minInicio >= limiteTurno && hueco >= HUECO_MAXIMO;
+
+                    if (!cruzaTurno) {
+                        sig = ABREVIACIONES[siguiente.tarea] || siguiente.tarea;
+                        if (hueco > 0) {
+                            sigHora = siguiente.inicio;
+                            trasDescanso = hayDescansoEntre(b.minFin, siguiente.minInicio);
+                        }
                     }
                 }
-                bloques.push(bloqueActual);
 
-                bloques.forEach(b => {
-                    if (b.tarea.includes(seccionElegida)) {
-                        let tareasFuturas = empRows.filter(r => r.ordenGeneral > b.ultimoOrden && !r.tarea.includes(seccionElegida) && r.tarea !== "");
-                        
-                        let sigStr = "FIN TURNO";
-                        if (tareasFuturas.length > 0) {
-                            let futura = tareasFuturas[0];
-                            let rawSig = futura.tarea;
-                            sigStr = ABREVIACIONES[rawSig] || rawSig;
+                // --- Llegada: de qué sección viene ---
+                let desde = "";
+                let trasDescansoLlegada = false;
+                if (anterior && !anterior.tarea.includes(seccionElegida) && !inicioRecortado
+                    && b.minInicio - anterior.minFin <= HUECO_MAXIMO) {
+                    desde = ABREVIACIONES[anterior.tarea] || anterior.tarea;
+                    trasDescansoLlegada = hayDescansoEntre(anterior.minFin, b.minInicio);
+                }
 
-                            let minInicioFutura = calcularMinutosLogicos(futura.horaInicio);
-                            let minFinActual = calcularMinutosLogicos(b.fin);
-
-                            if (turno === 'manana' && minFinActual < umbralTarde && minInicioFutura >= umbralTarde) {
-                                sigStr = "FIN TURNO";
-                            } else if (turno === 'tarde' && minFinActual < umbralNoche && minInicioFutura >= umbralNoche) {
-                                sigStr = "FIN TURNO";
-                            }
-                        }
-
-                        let minutosInicio = calcularMinutosLogicos(b.horaTurno);
-                        let minutosFin = calcularMinutosLogicos(b.fin);
-                        
-                        if (minutosFin === 0) minutosFin = 1440; 
-
-                        let finMostrar = b.fin;
-                        let horaTurnoMostrar = b.horaTurno;
-
-                        if (turno === 'manana') {
-                            if (minutosInicio < umbralTarde) {
-                                if (minutosFin > umbralTarde) {
-                                    finMostrar = "14:00"; 
-                                }
-                                dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
-                            }
-                        
-                        } else if (turno === 'tarde') {
-                            if (minutosFin > umbralTarde) {
-                                if (minutosInicio < umbralTarde) horaTurnoMostrar = "14:00"; 
-                                if (minutosFin > umbralNoche) finMostrar = "22:00"; 
-                                
-                                dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
-                            }
-                        
-                        } else if (turno === 'noche') {
-                            if (minutosFin > umbralNoche) {
-                                if (minutosInicio < umbralNoche) horaTurnoMostrar = "22:00"; 
-                                
-                                dfFiltradoFinal.push({ nombre: b.nombre, horaTurno: horaTurnoMostrar, fin: finMostrar, sig: sigStr });
-                            }
-                        }
-                    }
+                resultado.push({
+                    nombre: nombreAMostrar(emp),
+                    horaTurno: horaTurnoMostrar,
+                    fin: finMostrar,
+                    sig: sig,
+                    sigHora: sigHora,
+                    trasDescanso: trasDescanso,
+                    desde: desde,
+                    trasDescansoLlegada: trasDescansoLlegada
                 });
-            }
+            });
         }
-        return dfFiltradoFinal;
+        return resultado;
     }
 
     function renderizarPantalla(datosParaPintar) {
         const contenedor = document.getElementById('contenedor-horarios');
         contenedor.innerHTML = "";
-        renderizarResumen(datosParaPintar);
 
         if (datosParaPintar.length === 0) {
             contenedor.innerHTML = "<p style='text-align: center; color: #666; width: 100%; font-size: 18px;'>No hay nadie asignado a esta sección en este turno.</p>";
@@ -509,12 +612,10 @@
 
         horasOrdenadas.forEach(hora => {
             let listaDatos = turnos[hora];
-            
+
             listaDatos.sort((a, b) => {
-                let finA = calcularMinutosLogicos(a.fin);
-                if (finA === 0) finA = 1440; 
-                let finB = calcularMinutosLogicos(b.fin);
-                if (finB === 0) finB = 1440;
+                let finA = minutosDeFin(a.fin);
+                let finB = minutosDeFin(b.fin);
 
                 if (finA !== finB) return finA - finB;
                 if (a.sig !== b.sig) return a.sig.localeCompare(b.sig);
@@ -523,76 +624,115 @@
 
             let divBloque = document.createElement('div');
             divBloque.className = 'bloque-hora';
-            
+
             let sigHtml = '';
             listaDatos.forEach(d => {
-                let textoSig = d.sig !== "FIN TURNO" ? `➔ Sig: ${d.sig}` : "";
+                let textoSig = "";
+                if (d.sig !== "FIN TURNO") {
+                    textoSig = `➔ Sig: ${escaparHtml(d.sig)}`;
+                    if (d.sigHora) textoSig += ` (${escaparHtml(d.sigHora)})`;
+                }
 
                 sigHtml += `
                     <tr>
-                        <td class="col-nombre">- ${d.nombre}</td>
-                        <td class="col-fin">Fin: ${d.fin}</td>
+                        <td class="col-nombre">- ${escaparHtml(d.nombre)}</td>
+                        <td class="col-fin">Fin: ${escaparHtml(d.fin)}</td>
                         <td class="col-sig">${textoSig}</td>
                     </tr>
                 `;
             });
 
             divBloque.innerHTML = `
-                <div class="hora-titulo">${hora} H (${listaDatos.length} pers.)</div>
+                <div class="hora-titulo">${escaparHtml(hora)} H (${listaDatos.length} pers.)</div>
                 <table>${sigHtml}</table>
             `;
-            
+
             contenedor.appendChild(divBloque);
         });
     }
 
-    function escaparHtml(texto) {
-        return String(texto).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
-    }
-
-    // Resumen para la última hoja: agrupa a todos los que salen a la misma hora
-    // hacia la misma sección, para avisarlos de una sola vez.
-    function renderizarResumen(datos) {
-        const contenedor = document.getElementById('contenedor-resumen');
-        contenedor.innerHTML = "";
-
+    // Agrupa personas por una clave y devuelve los grupos ordenados por hora
+    function agrupar(datos, obtenerGrupo) {
         let grupos = {};
         datos.forEach(d => {
-            if (d.sig === "FIN TURNO") return;
-            let clave = d.fin + "|" + d.sig;
-            if (!grupos[clave]) grupos[clave] = { fin: d.fin, sig: d.sig, nombres: [] };
-            if (!grupos[clave].nombres.includes(d.nombre)) grupos[clave].nombres.push(d.nombre);
+            let g = obtenerGrupo(d);
+            if (!g) return;
+            if (!grupos[g.clave]) grupos[g.clave] = Object.assign({ nombres: [] }, g);
+            if (!grupos[g.clave].nombres.includes(d.nombre)) grupos[g.clave].nombres.push(d.nombre);
         });
+        return Object.values(grupos).sort((a, b) => (a.orden - b.orden) || a.clave.localeCompare(b.clave));
+    }
 
-        let lista = Object.values(grupos);
-        if (lista.length === 0) return;
-
-        const minutosFin = (g) => {
-            let m = calcularMinutosLogicos(g.fin);
-            return m === 0 ? 1440 : m;
-        };
-        lista.sort((a, b) => (minutosFin(a) - minutosFin(b)) || a.sig.localeCompare(b.sig));
-
-        let avisosHtml = lista.map(g => {
+    function pintarAvisos(lista, claseExtra) {
+        return lista.map(g => {
             g.nombres.sort((a, b) => a.localeCompare(b));
             let nombresHtml = g.nombres.map(n => `<li>- ${escaparHtml(n)}</li>`).join('');
+            let notaHtml = g.nota ? `<div class="aviso-nota">${escaparHtml(g.nota)}</div>` : '';
             return `
-                <div class="aviso">
+                <div class="aviso ${claseExtra}">
                     <div class="aviso-cabecera">
-                        <span>A las ${escaparHtml(g.fin)} H ➔ ${escaparHtml(g.sig)}</span>
+                        <span>${escaparHtml(g.titulo)}</span>
                         <span>${g.nombres.length} pers.</span>
                     </div>
+                    ${notaHtml}
                     <ul class="aviso-nombres">${nombresHtml}</ul>
                 </div>
             `;
         }).join('');
+    }
 
-        const seccion = document.getElementById('combo-seccion').value;
-        contenedor.innerHTML = `
-            <p class="resumen-titulo">📢 Avisos de cambio de sección — ${escaparHtml(seccion)}</p>
-            <p class="resumen-subtitulo">Personas que salen a la misma hora hacia la misma sección, para avisarlas de una sola vez.</p>
-            <div class="resumen-grid">${avisosHtml}</div>
-        `;
+    // Resumen para la última hoja: salidas y llegadas agrupadas por hora y sección,
+    // para avisar a todo el grupo de una sola vez.
+    function renderizarResumen(datos) {
+        const contenedor = document.getElementById('contenedor-resumen');
+        contenedor.innerHTML = "";
+
+        let salidas = agrupar(datos, d => {
+            if (d.sig === "FIN TURNO") return null;
+            let nota = "";
+            if (d.sigHora) {
+                nota = d.trasDescanso
+                    ? `Descanso y, a las ${d.sigHora}, a ${d.sig}`
+                    : `Empiezan en ${d.sig} a las ${d.sigHora}`;
+            }
+            return {
+                clave: `${d.fin}|${d.sig}|${d.sigHora}|${d.trasDescanso}`,
+                orden: minutosDeFin(d.fin),
+                titulo: `A las ${d.fin} H ➔ ${d.sig}`,
+                nota: nota
+            };
+        });
+
+        let llegadas = agrupar(datos, d => {
+            if (!d.desde) return null;
+            return {
+                clave: `${d.horaTurno}|${d.desde}|${d.trasDescansoLlegada}`,
+                orden: calcularMinutosLogicos(d.horaTurno),
+                titulo: `A las ${d.horaTurno} H ⬅ desde ${d.desde}`,
+                nota: d.trasDescansoLlegada ? "Llegan después del descanso" : ""
+            };
+        });
+
+        if (salidas.length === 0 && llegadas.length === 0) return;
+
+        const cabecera = escaparHtml(document.getElementById('cabecera-impresa').textContent);
+        let html = `<div class="cabecera-impresa">${cabecera}</div>`;
+
+        if (salidas.length > 0) {
+            html += `
+                <p class="resumen-titulo">📢 Salidas hacia otra sección</p>
+                <p class="resumen-subtitulo">Personas que salen a la misma hora hacia la misma sección, para avisarlas de una sola vez.</p>
+                <div class="resumen-grid">${pintarAvisos(salidas, '')}</div>
+            `;
+        }
+        if (llegadas.length > 0) {
+            html += `
+                <p class="resumen-titulo">📥 Llegadas desde otra sección</p>
+                <p class="resumen-subtitulo">Personas que llegan a esta sección a la misma hora desde la misma sección.</p>
+                <div class="resumen-grid">${pintarAvisos(llegadas, 'aviso-entrada')}</div>
+            `;
+        }
+        contenedor.innerHTML = html;
     }
 </script>
 
