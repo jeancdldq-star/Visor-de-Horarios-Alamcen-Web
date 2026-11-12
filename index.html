@@ -126,6 +126,58 @@
         .col-fin { width: 12%; font-weight: bold; }
         .col-sig { width: 22%; font-weight: bold; }
 
+        /* --- RESUMEN DE MOVIMIENTOS (ÚLTIMA HOJA) --- */
+        #contenedor-resumen {
+            margin-top: 35px;
+            padding-top: 20px;
+            border-top: 3px dashed #999;
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+        }
+        .resumen-titulo {
+            font-size: 16px;
+            font-weight: bold;
+            color: black;
+            margin: 0 0 4px 0;
+        }
+        .resumen-subtitulo { font-size: 12px; color: #666; margin: 0 0 15px 0; }
+        .resumen-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+            gap: 15px;
+            align-items: start;
+        }
+        .aviso {
+            border: 1px solid #999;
+            break-inside: avoid;
+        }
+        .aviso-cabecera {
+            background-color: #CCFF00 !important;
+            color: black;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 5px 10px;
+            border-bottom: 2px solid black;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .aviso-nombres {
+            margin: 0;
+            padding: 6px 10px 8px 10px;
+            list-style: none;
+            columns: 2;
+            column-gap: 15px;
+        }
+        .aviso-nombres li {
+            color: #000080;
+            font-size: 12px;
+            font-style: italic;
+            padding: 2px 0;
+            break-inside: avoid;
+        }
+
         /* --- ESTILOS PARA IMPRESIÓN --- */
         @media print {
             @page { margin: 3mm; }
@@ -134,6 +186,9 @@
             .app-container { box-shadow: none; padding: 0; width: 100%; max-width: 100%; }
             #contenedor-horarios { display: flex; flex-wrap: wrap; gap: 15px; }
             .bloque-hora { width: 30%; font-size: 12px; }
+            /* El resumen siempre empieza en una hoja nueva: la última */
+            #contenedor-resumen { break-before: page; page-break-before: always; border-top: none; margin-top: 0; padding-top: 0; }
+            .resumen-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding-right: 2px; }
         }
     </style>
 </head>
@@ -179,6 +234,7 @@
     </div>
 
     <div id="contenedor-horarios"></div>
+    <div id="contenedor-resumen"></div>
 </div>
 
 <script>
@@ -225,6 +281,7 @@
             renderizarPantalla(datosListos);
         } else {
             document.getElementById('contenedor-horarios').innerHTML = "";
+            document.getElementById('contenedor-resumen').innerHTML = "";
             document.getElementById('btn-imprimir').disabled = true;
         }
     });
@@ -432,6 +489,7 @@
     function renderizarPantalla(datosParaPintar) {
         const contenedor = document.getElementById('contenedor-horarios');
         contenedor.innerHTML = "";
+        renderizarResumen(datosParaPintar);
 
         if (datosParaPintar.length === 0) {
             contenedor.innerHTML = "<p style='text-align: center; color: #666; width: 100%; font-size: 18px;'>No hay nadie asignado a esta sección en este turno.</p>";
@@ -486,6 +544,55 @@
             
             contenedor.appendChild(divBloque);
         });
+    }
+
+    function escaparHtml(texto) {
+        return String(texto).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    }
+
+    // Resumen para la última hoja: agrupa a todos los que salen a la misma hora
+    // hacia la misma sección, para avisarlos de una sola vez.
+    function renderizarResumen(datos) {
+        const contenedor = document.getElementById('contenedor-resumen');
+        contenedor.innerHTML = "";
+
+        let grupos = {};
+        datos.forEach(d => {
+            if (d.sig === "FIN TURNO") return;
+            let clave = d.fin + "|" + d.sig;
+            if (!grupos[clave]) grupos[clave] = { fin: d.fin, sig: d.sig, nombres: [] };
+            if (!grupos[clave].nombres.includes(d.nombre)) grupos[clave].nombres.push(d.nombre);
+        });
+
+        let lista = Object.values(grupos);
+        if (lista.length === 0) return;
+
+        const minutosFin = (g) => {
+            let m = calcularMinutosLogicos(g.fin);
+            return m === 0 ? 1440 : m;
+        };
+        lista.sort((a, b) => (minutosFin(a) - minutosFin(b)) || a.sig.localeCompare(b.sig));
+
+        let avisosHtml = lista.map(g => {
+            g.nombres.sort((a, b) => a.localeCompare(b));
+            let nombresHtml = g.nombres.map(n => `<li>- ${escaparHtml(n)}</li>`).join('');
+            return `
+                <div class="aviso">
+                    <div class="aviso-cabecera">
+                        <span>A las ${escaparHtml(g.fin)} H ➔ ${escaparHtml(g.sig)}</span>
+                        <span>${g.nombres.length} pers.</span>
+                    </div>
+                    <ul class="aviso-nombres">${nombresHtml}</ul>
+                </div>
+            `;
+        }).join('');
+
+        const seccion = document.getElementById('combo-seccion').value;
+        contenedor.innerHTML = `
+            <p class="resumen-titulo">📢 Avisos de cambio de sección — ${escaparHtml(seccion)}</p>
+            <p class="resumen-subtitulo">Personas que salen a la misma hora hacia la misma sección, para avisarlas de una sola vez.</p>
+            <div class="resumen-grid">${avisosHtml}</div>
+        `;
     }
 </script>
 
