@@ -13,6 +13,13 @@
     </script>
     <style>
         /* --- ESTILOS GENERALES Y SIMULACIÓN DE PAPEL --- */
+        /* --- PALETA DE COLORES (por defecto: la clásica de siempre) --- */
+        :root {
+            --titulo-fondo: #CCFF00;
+            --titulo-texto: black;
+            --nombres: #000080;
+            --entrada-fondo: #BFE6FF;
+        }
         body {
             font-family: 'Arial', sans-serif;
             background-color: #f0f2f5;
@@ -112,8 +119,8 @@
             font-size: 12px;
         }
         .hora-titulo {
-            background-color: #CCFF00 !important;
-            color: black;
+            background-color: var(--titulo-fondo) !important;
+            color: var(--titulo-texto);
             font-size: 13px;
             font-weight: bold;
             padding: 5px 10px;
@@ -129,7 +136,7 @@
             margin-top: 10px;
         }
         td {
-            color: #000080;
+            color: var(--nombres);
             font-size: 12px;
             font-style: italic;
             padding: 6px 2px;
@@ -165,7 +172,7 @@
             color: black;
             padding: 4px 10px 0 10px;
         }
-        .aviso-entrada .aviso-cabecera { background-color: #BFE6FF !important; }
+        .aviso-entrada .aviso-cabecera { background-color: var(--entrada-fondo) !important; }
         .subgrupo { padding: 4px 0 2px 0; border-top: 1px dashed #bbb; }
         .subgrupo:first-of-type { border-top: none; }
         .subgrupo-titulo {
@@ -186,8 +193,8 @@
             break-inside: avoid;
         }
         .aviso-cabecera {
-            background-color: #CCFF00 !important;
-            color: black;
+            background-color: var(--titulo-fondo) !important;
+            color: var(--titulo-texto);
             font-size: 14px;
             font-weight: bold;
             padding: 5px 10px;
@@ -206,7 +213,7 @@
             column-gap: 15px;
         }
         .aviso-nombres li {
-            color: #000080;
+            color: var(--nombres);
             font-size: 12px;
             font-style: italic;
             padding: 2px 0;
@@ -257,6 +264,9 @@
                 <option value="tarde">⛅ Tarde</option>
                 <option value="noche">🌙 Noche</option>
             </select>
+
+            <label for="combo-paleta" style="font-weight: bold;">Colores:</label>
+            <select id="combo-paleta" style="width: 170px;"></select>
 
             <label for="archivo-planificador" class="btn btn-cargar" id="lbl-cargar">
                 📂 Cargar planificador
@@ -367,6 +377,54 @@
         }
         return partes.join(' ');
     }
+
+    // --- PALETAS DE COLORES ---
+    // titulo: fondo de los títulos de hora y de los avisos de salida
+    // texto: color del texto de esos títulos
+    // nombres: color de los nombres y horas
+    // entrada: fondo de los avisos de llegada
+    const PALETAS = {
+        clasica:  { nombre: "Clásica (amarillo)", titulo: "#CCFF00", texto: "#000000", nombres: "#000080", entrada: "#BFE6FF" },
+        naranja:  { nombre: "Naranja",            titulo: "#FFB347", texto: "#000000", nombres: "#7A2E00", entrada: "#FFE3B3" },
+        azul:     { nombre: "Azul",               titulo: "#7FC8FF", texto: "#000000", nombres: "#00336B", entrada: "#CDEBFF" },
+        verde:    { nombre: "Verde",              titulo: "#7EE08A", texto: "#000000", nombres: "#0B4D1A", entrada: "#D3F5D7" },
+        rosa:     { nombre: "Rosa",               titulo: "#FF9ECF", texto: "#000000", nombres: "#6B0F45", entrada: "#FFD9EC" },
+        lila:     { nombre: "Lila",               titulo: "#C3A6FF", texto: "#000000", nombres: "#3B1A78", entrada: "#E6DBFF" },
+        gris:     { nombre: "Gris (ahorra tinta)", titulo: "#D9D9D9", texto: "#000000", nombres: "#000000", entrada: "#F0F0F0" }
+    };
+    const PALETA_POR_DEFECTO = "clasica";
+    const comboPaleta = document.getElementById('combo-paleta');
+
+    Object.entries(PALETAS).forEach(([clave, p]) => {
+        let opcion = document.createElement('option');
+        opcion.value = clave;
+        opcion.textContent = p.nombre;
+        opcion.style.backgroundColor = p.titulo;
+        opcion.style.color = p.texto;
+        comboPaleta.appendChild(opcion);
+    });
+
+    function aplicarPaleta(clave) {
+        if (!PALETAS[clave]) clave = PALETA_POR_DEFECTO;
+        const p = PALETAS[clave];
+        const raiz = document.documentElement.style;
+        raiz.setProperty('--titulo-fondo', p.titulo);
+        raiz.setProperty('--titulo-texto', p.texto);
+        raiz.setProperty('--nombres', p.nombres);
+        raiz.setProperty('--entrada-fondo', p.entrada);
+        comboPaleta.value = clave;
+        comboPaleta.style.backgroundColor = p.titulo;
+        comboPaleta.style.color = p.texto;
+    }
+
+    let paletaGuardada = null;
+    try { paletaGuardada = localStorage.getItem('visor-paleta'); } catch (e) { /* sin almacenamiento */ }
+    aplicarPaleta(paletaGuardada || PALETA_POR_DEFECTO);
+
+    comboPaleta.addEventListener('change', () => {
+        aplicarPaleta(comboPaleta.value);
+        try { localStorage.setItem('visor-paleta', comboPaleta.value); } catch (e) { /* no es imprescindible */ }
+    });
 
     // --- MEMORIA DE LA ÚLTIMA SECCIÓN Y TURNO ELEGIDOS ---
     try {
