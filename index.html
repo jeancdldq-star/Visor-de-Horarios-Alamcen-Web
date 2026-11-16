@@ -156,7 +156,9 @@
             margin: 0 0 4px 0;
         }
         .resumen-subtitulo { font-size: 12px; color: #666; margin: 0 0 15px 0; }
-        .resumen-grid + .resumen-titulo { margin-top: 25px; }
+        /* Que el título de una parte no se quede solo al pie de la hoja */
+        .resumen-parte { break-inside: avoid-page; }
+        .resumen-parte + .resumen-parte { margin-top: 25px; }
         .aviso-nota {
             font-size: 11px;
             font-weight: bold;
@@ -164,6 +166,15 @@
             padding: 4px 10px 0 10px;
         }
         .aviso-entrada .aviso-cabecera { background-color: #BFE6FF !important; }
+        .subgrupo { padding: 4px 0 2px 0; border-top: 1px dashed #bbb; }
+        .subgrupo:first-of-type { border-top: none; }
+        .subgrupo-titulo {
+            font-size: 12px;
+            font-weight: bold;
+            color: black;
+            padding: 2px 10px 0 10px;
+        }
+        .subgrupo .aviso-nombres { padding-top: 2px; padding-bottom: 4px; }
         .resumen-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
@@ -672,16 +683,48 @@
         const contenedor = document.getElementById('contenedor-resumen');
         contenedor.innerHTML = "";
 
-        let salidas = agrupar(datos, d => {
-            if (d.sig === "FIN TURNO") return null;
-            let nota = d.sigHora ? `Empiezan en ${d.sig} a las ${d.sigHora}` : "";
-            return {
-                clave: `${d.fin}|${d.sig}|${d.sigHora}`,
-                orden: minutosDeFin(d.fin),
-                titulo: `A las ${d.fin} H ➔ ${d.sig}`,
-                nota: nota
-            };
+        // Las salidas se agrupan primero por la hora a la que la persona ENTRA en la sección:
+        // el aviso solo se le puede dar cuando ya está aquí. Dentro de cada entrada,
+        // se agrupan por hora de salida y sección de destino.
+        let porEntrada = {};
+        datos.forEach(d => {
+            if (d.sig === "FIN TURNO") return;
+            if (!porEntrada[d.horaTurno]) porEntrada[d.horaTurno] = [];
+            porEntrada[d.horaTurno].push(d);
         });
+        let entradas = Object.keys(porEntrada)
+            .sort((a, b) => calcularMinutosLogicos(a) - calcularMinutosLogicos(b))
+            .map(hora => ({
+                hora: hora,
+                grupos: agrupar(porEntrada[hora], d => ({
+                    clave: `${d.fin}|${d.sig}|${d.sigHora}`,
+                    orden: minutosDeFin(d.fin),
+                    titulo: `A las ${d.fin} H ➔ ${d.sig}` + (d.sigHora ? ` (empiezan a las ${d.sigHora})` : "")
+                }))
+            }));
+
+        const salidasHtml = entradas.map(e => {
+            let total = e.grupos.reduce((n, g) => n + g.nombres.length, 0);
+            let gruposHtml = e.grupos.map(g => {
+                g.nombres.sort((a, b) => a.localeCompare(b));
+                let nombresHtml = g.nombres.map(n => `<li>- ${escaparHtml(n)}</li>`).join('');
+                return `
+                    <div class="subgrupo">
+                        <div class="subgrupo-titulo">${escaparHtml(g.titulo)} · ${g.nombres.length} pers.</div>
+                        <ul class="aviso-nombres">${nombresHtml}</ul>
+                    </div>
+                `;
+            }).join('');
+            return `
+                <div class="aviso">
+                    <div class="aviso-cabecera">
+                        <span>Avisar al entrar a las ${escaparHtml(e.hora)} H</span>
+                        <span>${total} pers.</span>
+                    </div>
+                    ${gruposHtml}
+                </div>
+            `;
+        }).join('');
 
         let llegadas = agrupar(datos, d => {
             if (!d.desde) return null;
@@ -693,24 +736,24 @@
             };
         });
 
-        if (salidas.length === 0 && llegadas.length === 0) return;
+        if (entradas.length === 0 && llegadas.length === 0) return;
 
         const cabecera = escaparHtml(document.getElementById('cabecera-impresa').textContent);
         let html = `<div class="cabecera-impresa">${cabecera}</div>`;
 
-        if (salidas.length > 0) {
-            html += `
+        if (entradas.length > 0) {
+            html += `<div class="resumen-parte">
                 <p class="resumen-titulo">Salidas hacia otra sección</p>
-                <p class="resumen-subtitulo">Personas que salen a la misma hora hacia la misma sección.</p>
-                <div class="resumen-grid">${pintarAvisos(salidas, '')}</div>
-            `;
+                <p class="resumen-subtitulo">Agrupadas por la hora a la que entran en esta sección, que es cuando se les puede avisar. Dentro, quién sale a la misma hora hacia la misma sección.</p>
+                <div class="resumen-grid">${salidasHtml}</div>
+            </div>`;
         }
         if (llegadas.length > 0) {
-            html += `
+            html += `<div class="resumen-parte">
                 <p class="resumen-titulo">Llegadas desde otra sección</p>
                 <p class="resumen-subtitulo">Personas que llegan a esta sección a la misma hora desde la misma sección.</p>
                 <div class="resumen-grid">${pintarAvisos(llegadas, 'aviso-entrada')}</div>
-            `;
+            </div>`;
         }
         contenedor.innerHTML = html;
     }
