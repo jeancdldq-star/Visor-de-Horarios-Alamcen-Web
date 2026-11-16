@@ -26,7 +26,28 @@
             margin: 0;
             padding: 20px;
         }
+        /* Selector de colores discreto, arriba a la izquierda */
+        .paletas {
+            position: absolute;
+            top: 14px;
+            left: 16px;
+            display: flex;
+            gap: 6px;
+            opacity: 0.55;
+            transition: opacity 0.2s;
+        }
+        .paletas:hover, .paletas:focus-within { opacity: 1; }
+        .paleta {
+            width: 14px;
+            height: 14px;
+            padding: 0;
+            border-radius: 50%;
+            border: 1px solid rgba(0,0,0,0.35);
+            cursor: pointer;
+        }
+        .paleta.activa { outline: 2px solid #333; outline-offset: 1px; }
         .app-container {
+            position: relative;
             width: 96%;
             max-width: 1800px;
             margin: 0 auto;
@@ -242,6 +263,7 @@
 
 <div class="app-container">
     <div class="no-print">
+        <div id="paletas" class="paletas" role="radiogroup" aria-label="Colores"></div>
         <h1>Visor Diario de Turnos</h1>
 
         <!-- Fecha del planificador y nombre del archivo cargado -->
@@ -264,9 +286,6 @@
                 <option value="tarde">⛅ Tarde</option>
                 <option value="noche">🌙 Noche</option>
             </select>
-
-            <label for="combo-paleta" style="font-weight: bold;">Colores:</label>
-            <select id="combo-paleta" style="width: 170px;"></select>
 
             <label for="archivo-planificador" class="btn btn-cargar" id="lbl-cargar">
                 📂 Cargar planificador
@@ -384,24 +403,31 @@
     // nombres: color de los nombres y horas
     // entrada: fondo de los avisos de llegada
     const PALETAS = {
-        clasica:  { nombre: "Clásica (amarillo)", titulo: "#CCFF00", texto: "#000000", nombres: "#000080", entrada: "#BFE6FF" },
-        naranja:  { nombre: "Naranja",            titulo: "#FFB347", texto: "#000000", nombres: "#7A2E00", entrada: "#FFE3B3" },
-        azul:     { nombre: "Azul",               titulo: "#7FC8FF", texto: "#000000", nombres: "#00336B", entrada: "#CDEBFF" },
-        verde:    { nombre: "Verde",              titulo: "#7EE08A", texto: "#000000", nombres: "#0B4D1A", entrada: "#D3F5D7" },
-        rosa:     { nombre: "Rosa",               titulo: "#FF9ECF", texto: "#000000", nombres: "#6B0F45", entrada: "#FFD9EC" },
-        lila:     { nombre: "Lila",               titulo: "#C3A6FF", texto: "#000000", nombres: "#3B1A78", entrada: "#E6DBFF" },
-        gris:     { nombre: "Gris (ahorra tinta)", titulo: "#D9D9D9", texto: "#000000", nombres: "#000000", entrada: "#F0F0F0" }
+        clasica:  { nombre: "Amarillo", titulo: "#CCFF00", texto: "#000000", nombres: "#000080", entrada: "#BFE6FF" },
+        naranja:  { nombre: "Naranja",  titulo: "#FFB347", texto: "#000000", nombres: "#7A2E00", entrada: "#FFE3B3" },
+        azul:     { nombre: "Azul",     titulo: "#7FC8FF", texto: "#000000", nombres: "#00336B", entrada: "#CDEBFF" },
+        verde:    { nombre: "Verde",    titulo: "#7EE08A", texto: "#000000", nombres: "#0B4D1A", entrada: "#D3F5D7" },
+        rosa:     { nombre: "Rosa",     titulo: "#FF9ECF", texto: "#000000", nombres: "#6B0F45", entrada: "#FFD9EC" },
+        lila:     { nombre: "Lila",     titulo: "#C3A6FF", texto: "#000000", nombres: "#3B1A78", entrada: "#E6DBFF" },
+        gris:     { nombre: "Gris",     titulo: "#D9D9D9", texto: "#000000", nombres: "#000000", entrada: "#F0F0F0" }
     };
     const PALETA_POR_DEFECTO = "clasica";
-    const comboPaleta = document.getElementById('combo-paleta');
+    const contenedorPaletas = document.getElementById('paletas');
 
+    // Un círculo de color por paleta, sin texto
     Object.entries(PALETAS).forEach(([clave, p]) => {
-        let opcion = document.createElement('option');
-        opcion.value = clave;
-        opcion.textContent = p.nombre;
-        opcion.style.backgroundColor = p.titulo;
-        opcion.style.color = p.texto;
-        comboPaleta.appendChild(opcion);
+        let boton = document.createElement('button');
+        boton.type = 'button';
+        boton.className = 'paleta';
+        boton.dataset.paleta = clave;
+        boton.style.backgroundColor = p.titulo;
+        boton.setAttribute('role', 'radio');
+        boton.setAttribute('aria-label', p.nombre);
+        boton.addEventListener('click', () => {
+            aplicarPaleta(clave);
+            try { localStorage.setItem('visor-paleta', clave); } catch (e) { /* no es imprescindible */ }
+        });
+        contenedorPaletas.appendChild(boton);
     });
 
     function aplicarPaleta(clave) {
@@ -412,19 +438,16 @@
         raiz.setProperty('--titulo-texto', p.texto);
         raiz.setProperty('--nombres', p.nombres);
         raiz.setProperty('--entrada-fondo', p.entrada);
-        comboPaleta.value = clave;
-        comboPaleta.style.backgroundColor = p.titulo;
-        comboPaleta.style.color = p.texto;
+        contenedorPaletas.querySelectorAll('.paleta').forEach(b => {
+            let activa = b.dataset.paleta === clave;
+            b.classList.toggle('activa', activa);
+            b.setAttribute('aria-checked', activa ? 'true' : 'false');
+        });
     }
 
     let paletaGuardada = null;
     try { paletaGuardada = localStorage.getItem('visor-paleta'); } catch (e) { /* sin almacenamiento */ }
     aplicarPaleta(paletaGuardada || PALETA_POR_DEFECTO);
-
-    comboPaleta.addEventListener('change', () => {
-        aplicarPaleta(comboPaleta.value);
-        try { localStorage.setItem('visor-paleta', comboPaleta.value); } catch (e) { /* no es imprescindible */ }
-    });
 
     // --- MEMORIA DE LA ÚLTIMA SECCIÓN Y TURNO ELEGIDOS ---
     try {
